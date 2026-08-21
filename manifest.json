@@ -1,0 +1,16 @@
+{
+  "name": "Сканер Кодов PWA",
+  "short_name": "Сканер",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#1976d2",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='100' fill='%231976d2'/%3E%3Cpath d='M120 140h60v232h-60zm80 0h20v232h-20zm40 0h40v232h-40zm60 0h30v232h-30zm50 0h42v232h-42z' fill='%23ffffff'/%3E%3Cline x1='80' y1='256' x2='432' y2='256' stroke='%23ff5252' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
