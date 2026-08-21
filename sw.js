@@ -1,8 +1,10 @@
-const CACHE_NAME = 'scanner-pwa-v2';
+const CACHE_NAME = 'scanner-pwa-v3';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './icon-192.png',
+  './icon-512.png',
   'https://unpkg.com/@zxing/library@latest'
 ];
 
