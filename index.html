@@ -218,7 +218,7 @@
     let lastScannedCode = '';
     let lastScanTime = 0;
 
-    // Безопасное экранирование для корректного отображения спецсимволов (<, >, &)
+    // Безопасное экранирование спецсимволов HTML (<, >, &, ")
     function escapeHtml(text) {
       return text
         .replace(/&/g, "&amp;")
@@ -228,55 +228,69 @@
         .replace(/'/g, "&#039;");
     }
 
-    // Очистка криптохвоста GS1 (Честный Знак: теги 91, 92, 93)
-    function cleanGS1Crypto(text) {
-      let clean = text;
-      
-      // Вариант 1: Разделитель GS (ASCII 29 / \x1d) присутствует в потоке данных
-      if (clean.includes(String.fromCharCode(29))) {
-        const parts = clean.split(String.fromCharCode(29));
-        let rebuilt = '';
+    // Надежный парсер GS1 / Честный Знак для отсечения криптохвоста
+    function cleanGS1Crypto(raw) {
+      if (!raw) return "";
+
+      // 1. Нормализуем все вариации разделителей GS (ASCII 29, \u001d, \x1d)
+      let text = raw.replace(/[\u001d\x1d]/g, "<GS>");
+
+      // 2. Если внутри есть разделители GS, отсекаем криптохвосты (91, 92, 93, 8005)
+      if (text.includes("<GS>")) {
+        const parts = text.split("<GS>");
+        let result = "";
         for (let part of parts) {
-          // Если часть начинается с тега криптохвоста (91, 92, 93) - прерываем сборку
-          if (part.startsWith('91') || part.startsWith('92') || part.startsWith('93')) {
+          if (!part) continue;
+          if (part.startsWith("91") || part.startsWith("92") || part.startsWith("93") || part.startsWith("8005")) {
             break;
           }
-          rebuilt += part;
+          result += part;
         }
-        return rebuilt.replace(/[\x00-\x1F\x7F]/g, "").trim();
-      } 
-      
-      // Вариант 2: Слитная строка без управляющих символов ASCII 29
-      // Структура Честного Знака: 01 (2 знака) + GTIN (14 знаков) + 21 (2 знака) + Серийный номер + Хвост
-      const gs1Regex = /^(01\d{14}21)(.+)$/;
-      const match = clean.match(gs1Regex);
-      
-      if (match) {
-        const prefix = match[1]; // 01...21
-        let rest = match[2];     // Серийный номер + криптохвост
-        
-        // Для воды/молока/пива/табака криптохвост часто: 93 + 4 символа (всего 6 символов в конце)
-        if (rest.length > 6 && rest.slice(-6, -4) === '93') {
-          rest = rest.slice(0, -6);
-          return (prefix + rest).replace(/[\x00-\x1F\x7F]/g, "").trim();
-        }
-        
-        // Для обуви/одежды/фармы: отсечение по идентификаторам 91 или 92
-        const idx91 = rest.lastIndexOf('91');
-        if (idx91 !== -1 && (idx91 === 6 || idx91 === 7 || idx91 === 13)) {
-          rest = rest.substring(0, idx91);
-          return (prefix + rest).replace(/[\x00-\x1F\x7F]/g, "").trim();
-        }
-        
-        const idx92 = rest.lastIndexOf('92');
-        if (idx92 !== -1 && (idx92 === 6 || idx92 === 7 || idx92 === 13)) {
-          rest = rest.substring(0, idx92);
-          return (prefix + rest).replace(/[\x00-\x1F\x7F]/g, "").trim();
+        return result.replace(/[\x00-\x1F\x7F]/g, "").trim();
+      }
+
+      // 3. Если сканер передал сплошную строку без разделителей:
+      // Структура GS1: 01 (2) + GTIN (14 цифр) + 21 (2) + Серийный номер
+      if (text.startsWith("01") && text.length > 18) {
+        const gtinPrefix = text.substring(0, 16); // "01" + 14 цифр GTIN
+        const ai21 = text.substring(16, 18);     // "21"
+
+        if (ai21 === "21") {
+          const rest = text.substring(18); // Серийник + Хвост
+
+          // Вариант А: Хвост типа '93' (например: 93uVjb)
+          if (rest.length > 6 && rest.slice(-6, -4) === "93") {
+            const serial = rest.slice(0, -6);
+            return gtinPrefix + "21" + serial;
+          }
+
+          // Вариант Б: Серийник 13 символов (молоко/вода/одежда/обувь)
+          if (rest.length > 13) {
+            const tag = rest.substring(13, 15);
+            if (tag === "91" || tag === "92" || tag === "93") {
+              return gtinPrefix + "21" + rest.substring(0, 13);
+            }
+          }
+
+          // Вариант В: Серийник 7 символов (табак/сыры)
+          if (rest.length > 7) {
+            const tag = rest.substring(7, 9);
+            if (tag === "91" || tag === "92" || tag === "93" || tag === "80") {
+              return gtinPrefix + "21" + rest.substring(0, 7);
+            }
+          }
+
+          // Вариант Г: Серийник 6 символов (вода/молоко)
+          if (rest.length > 6) {
+            const tag = rest.substring(6, 8);
+            if (tag === "91" || tag === "92" || tag === "93") {
+              return gtinPrefix + "21" + rest.substring(0, 6);
+            }
+          }
         }
       }
-      
-      // Удаляем возможные управляющие символы ASCII (0-31)
-      return clean.replace(/[\x00-\x1F\x7F]/g, "").trim();
+
+      return text.replace(/<GS>/g, "").replace(/[\x00-\x1F\x7F]/g, "").trim();
     }
 
     function updateUI() {
@@ -327,14 +341,14 @@
             const rawText = result.getText();
             const format = result.getBarcodeFormat();
             
-            // Очищаем код от криптохвоста
+            // Очищаем GS1 / DataMatrix код от криптохвоста
             let finalCode = rawText;
             if (format === 'DATA_MATRIX' || rawText.startsWith('01')) {
               finalCode = cleanGS1Crypto(rawText);
             }
 
             if (batchModeCheck.checked) {
-              // Защита от дублей при удержании камеры (2 сек интервал)
+              // Анти-дребезг: пауза 2 сек на повтор одного и того же кода
               if (finalCode === lastScannedCode && (now - lastScanTime < 2000)) {
                 return; 
               }
@@ -345,7 +359,6 @@
               scannedCodes.push(finalCode);
               if (navigator.vibrate) navigator.vibrate(100);
               
-              // Безопасная вставка через escapeHtml
               resultBox.innerHTML = `<strong>[№${scannedCodes.length}] Добавлен:</strong><br>${escapeHtml(finalCode)}`;
               resultBox.scrollTop = resultBox.scrollHeight;
               updateUI();
@@ -373,7 +386,7 @@
       else startScan();
     });
 
-    // Экспорт кодов в .txt файл
+    // Экспорт кодов текущей сессии в текстовый файл
     downloadBtn.addEventListener('click', () => {
       if (scannedCodes.length === 0) return;
       
