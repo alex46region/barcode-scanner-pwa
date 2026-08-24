@@ -1,4 +1,6 @@
-const CACHE_NAME = 'scanner-pwa-v11';
+// Меняйте номер версии (например, v12, v13...), когда вносите изменения в код
+const CACHE_NAME = 'scanner-pwa-v12';
+
 const ASSETS = [
   './',
   './index.html',
@@ -12,7 +14,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
   );
-  self.skipWaiting();
+  // НЕ вызываем skipWaiting() сразу, чтобы дать пользователю нажать "Установить"
 });
 
 self.addEventListener('activate', (event) => {
@@ -28,6 +30,13 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+// Слушаем команду "Установить" от кнопки в index.html
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.action === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
