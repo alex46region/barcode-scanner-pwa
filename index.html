@@ -2,20 +2,38 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>Сканер Кодов Pro</title>
+  <title>GS1 DataMatrix Scanner Pro</title>
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#1976d2">
+  <meta name="theme-color" content="#0d1117">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
+    :root {
+      --bg-main: #0d1117;
+      --card-bg: rgba(22, 27, 34, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent: #2563eb;
+      --accent-glow: rgba(37, 99, 235, 0.35);
+      --success: #10b981;
+      --success-glow: rgba(16, 185, 129, 0.25);
+      --danger: #ef4444;
+      --danger-glow: rgba(239, 68, 68, 0.25);
+      --warning: #f59e0b;
+      --warning-glow: rgba(245, 158, 11, 0.25);
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+    }
+
     * { 
       box-sizing: border-box; 
       margin: 0; 
-      padding: 0; 
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
     }
     
     html, body {
@@ -23,26 +41,71 @@
       height: 100%;
       height: 100dvh;
       overflow: hidden;
-      background: #121212;
-      color: #fff;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
 
     body {
       display: flex;
       flex-direction: column;
+      position: relative;
     }
 
+    /* Верхняя панель */
     header {
-      padding: 12px 16px;
-      text-align: center;
-      background: #1e1e1e;
+      padding: env(safe-area-inset-top, 12px) 16px 12px 16px;
+      background: rgba(13, 17, 23, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
       font-size: 1rem;
       font-weight: 700;
-      flex-shrink: 0;
-      border-bottom: 1px solid #2d2d2d;
+      letter-spacing: 0.3px;
     }
 
+    .brand-badge {
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      color: #fff;
+      font-size: 0.65rem;
+      padding: 3px 6px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      font-weight: 800;
+      box-shadow: 0 2px 8px var(--accent-glow);
+    }
+
+    .counter-badge {
+      background: #1f2937;
+      border: 1px solid var(--card-border);
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .counter-badge span {
+      color: var(--success);
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    /* Область камеры */
     #camera-container {
       position: relative;
       flex: 1;
@@ -60,161 +123,325 @@
       object-fit: cover;
     }
 
-    .overlay {
+    /* Стильная рамка видоискателя */
+    .overlay-frame {
       position: absolute;
-      width: 65%;
-      max-width: 240px;
+      width: 68%;
+      max-width: 250px;
       aspect-ratio: 1;
-      border: 2px dashed #1976d2;
-      border-radius: 12px;
+      border-radius: 20px;
       pointer-events: none;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+      position: relative;
     }
 
+    /* Угловые маркеры */
+    .overlay-frame::before,
+    .overlay-frame::after {
+      content: '';
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-color: #3b82f6;
+      border-style: solid;
+      pointer-events: none;
+    }
+
+    .overlay-frame::before {
+      top: -2px;
+      left: -2px;
+      border-width: 4px 0 0 4px;
+      border-top-left-radius: 20px;
+    }
+
+    .overlay-frame::after {
+      bottom: -2px;
+      right: -2px;
+      border-width: 0 4px 4px 0;
+      border-bottom-right-radius: 20px;
+    }
+
+    .corner-tr, .corner-bl {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-color: #3b82f6;
+      border-style: solid;
+      pointer-events: none;
+    }
+
+    .corner-tr {
+      top: -2px;
+      right: -2px;
+      border-width: 4px 4px 0 0;
+      border-top-right-radius: 20px;
+    }
+
+    .corner-bl {
+      bottom: -2px;
+      left: -2px;
+      border-width: 0 0 4px 4px;
+      border-bottom-left-radius: 20px;
+    }
+
+    .scan-laser {
+      position: absolute;
+      top: 10%;
+      left: 5%;
+      right: 5%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #60a5fa, #3b82f6, #60a5fa, transparent);
+      box-shadow: 0 0 10px #3b82f6;
+      opacity: 0.7;
+      animation: scanAnim 2.2s ease-in-out infinite alternate;
+    }
+
+    @keyframes scanAnim {
+      0% { top: 8%; }
+      100% { top: 92%; }
+    }
+
+    /* Нижняя панель управления */
     #controls {
-      padding: 12px 16px;
-      background: #1e1e1e;
+      padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 16px;
+      background: rgba(13, 17, 23, 0.95);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
       flex-shrink: 0;
-      border-top: 1px solid #2d2d2d;
+      border-top: 1px solid var(--card-border);
+      z-index: 10;
     }
 
-    .mode-setting {
+    /* Карточка тумблера */
+    .mode-card {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: #2a2a2a;
-      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      padding: 10px 14px;
+      border-radius: 14px;
+    }
+
+    .mode-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .mode-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
       border-radius: 8px;
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
       font-size: 0.9rem;
     }
 
+    /* iOS-стиль свитчера */
     .switch {
       position: relative;
       display: inline-block;
-      width: 44px;
-      height: 24px;
+      width: 48px;
+      height: 28px;
     }
 
-    .switch input { opacity: 0; width: 0; height: 0; }
+    .switch input { 
+      opacity: 0; 
+      width: 0; 
+      height: 0; 
+    }
 
     .slider {
       position: absolute;
       cursor: pointer;
       inset: 0;
-      background-color: #555;
-      transition: .3s;
-      border-radius: 24px;
+      background-color: #374151;
+      transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 28px;
     }
 
     .slider:before {
       position: absolute;
       content: "";
-      height: 18px; width: 18px;
-      left: 3px; bottom: 3px;
-      background-color: white;
-      transition: .3s;
+      height: 22px;
+      width: 22px;
+      left: 3px;
+      bottom: 3px;
+      background-color: #ffffff;
+      transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
       border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     }
 
-    input:checked + .slider { background-color: #1976d2; }
-    input:checked + .slider:before { transform: translateX(20px); }
-
-    #session-info {
-      font-size: 0.8rem;
-      color: #aaa;
-      text-align: center;
+    input:checked + .slider { 
+      background-color: var(--accent); 
+    }
+    
+    input:checked + .slider:before { 
+      transform: translateX(20px); 
     }
 
+    /* Информационное окно результатов */
     #result-box {
-      background: #2a2a2a;
-      padding: 8px 12px;
-      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      padding: 12px 14px;
+      border-radius: 14px;
       word-break: break-all;
-      font-family: monospace;
-      min-height: 48px;
-      max-height: 70px;
-      font-size: 0.85rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      min-height: 52px;
+      max-height: 72px;
+      font-size: 0.84rem;
+      line-height: 1.4;
       overflow-y: auto;
-      transition: background-color 0.2s ease;
+      transition: all 0.25s ease;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
 
-    .duplicate-alert {
-      background-color: #d32f2f !important;
-      color: #fff !important;
-    }
-
-    .invalid-alert {
-      background-color: #e65100 !important;
-      color: #fff !important;
+    .status-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
     }
 
     .success-alert {
-      background-color: #2e7d32 !important;
-      color: #fff !important;
+      background: rgba(16, 185, 129, 0.12) !important;
+      border-color: rgba(16, 185, 129, 0.4) !important;
+      color: #34d399 !important;
+      box-shadow: 0 0 16px var(--success-glow);
     }
 
+    .duplicate-alert {
+      background: rgba(239, 68, 68, 0.15) !important;
+      border-color: rgba(239, 68, 68, 0.45) !important;
+      color: #f87171 !important;
+      box-shadow: 0 0 16px var(--danger-glow);
+    }
+
+    .invalid-alert {
+      background: rgba(245, 158, 11, 0.15) !important;
+      border-color: rgba(245, 158, 11, 0.45) !important;
+      color: #fbbf24 !important;
+      box-shadow: 0 0 16px var(--warning-glow);
+    }
+
+    /* Кнопки управления */
     .btn-group {
       display: flex;
-      gap: 8px;
+      gap: 10px;
     }
 
     button {
       flex: 1;
-      padding: 12px;
+      padding: 13px 16px;
       font-size: 0.95rem;
-      border-radius: 8px;
+      border-radius: 14px;
       border: none;
-      color: white;
-      font-weight: 600;
+      color: #fff;
+      font-weight: 700;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.15s ease;
     }
 
-    #toggle-btn { background: #1976d2; }
-    #download-btn { background: #388e3c; display: none; }
-    #clear-btn { background: #555; display: none; max-width: 75px; }
-    button:active { opacity: 0.8; }
+    button:active { 
+      transform: scale(0.97);
+      opacity: 0.9; 
+    }
+
+    #toggle-btn { 
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      box-shadow: 0 4px 14px var(--accent-glow);
+    }
+
+    #toggle-btn.active {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      box-shadow: 0 4px 14px var(--danger-glow);
+    }
+
+    #download-btn { 
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 4px 14px var(--success-glow);
+      display: none; 
+    }
+
+    #clear-btn { 
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--card-border);
+      color: #e5e7eb;
+      display: none; 
+      max-width: 80px; 
+    }
   </style>
   <script src="https://unpkg.com/@zxing/library@latest"></script>
 </head>
 <body>
 
-  <header>Сканер GS1 & DataMatrix</header>
+  <header>
+    <div class="brand">
+      <div class="brand-badge">GS1</div>
+      <span>DataMatrix Pro</span>
+    </div>
+    <div class="counter-badge" id="counter-box">
+      Кодов: <span id="counter-val">0</span>
+    </div>
+  </header>
 
   <div id="camera-container">
     <video id="video" autoplay muted playsinline></video>
-    <div class="overlay"></div>
+    <div class="overlay-frame">
+      <div class="corner-tr"></div>
+      <div class="corner-bl"></div>
+      <div class="scan-laser"></div>
+    </div>
   </div>
 
   <div id="controls">
-    <div class="mode-setting">
-      <span>Накопительный режим (Сессия)</span>
+    <div class="mode-card">
+      <div class="mode-label">
+        <div class="mode-icon">⚡</div>
+        <span>Накопительный режим</span>
+      </div>
       <label class="switch">
         <input type="checkbox" id="batch-mode">
         <span class="slider"></span>
       </label>
     </div>
     
-    <div id="session-info">Режим: Одиночное сканирование</div>
-    <div id="result-box">Нажмите «Запустить камеру»</div>
+    <div id="result-box">Нажмите «Запустить сканер» для начала работы</div>
 
     <div class="btn-group">
       <button id="clear-btn">Сброс</button>
-      <button id="toggle-btn">Запустить камеру</button>
+      <button id="toggle-btn">Запустить сканер</button>
       <button id="download-btn">Скачать .TXT</button>
     </div>
   </div>
 
   <script>
-    // Регистрация SW с проверкой обновлений при старте
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then((reg) => {
-        reg.update(); // Принудительно проверяем обновления на сервере
+        reg.update();
       }).catch(console.error);
 
-      // Проверка обновлений при возврате на вкладку
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
           navigator.serviceWorker.getRegistration().then((reg) => {
@@ -224,7 +451,6 @@
       });
     }
 
-    // Очистка кэша при закрытии вкладки / приложения
     window.addEventListener('pagehide', () => {
       if ('caches' in window) {
         caches.keys().then((names) => {
@@ -240,7 +466,7 @@
     const downloadBtn = document.getElementById('download-btn');
     const clearBtn = document.getElementById('clear-btn');
     const batchModeCheck = document.getElementById('batch-mode');
-    const sessionInfo = document.getElementById('session-info');
+    const counterVal = document.getElementById('counter-val');
 
     let scanning = false;
     let scannedCodes = [];
@@ -256,14 +482,12 @@
         .replace(/'/g, "&#039;");
     }
 
-    // Валидация GS1 структуры маркировки
     function isGS1Code(raw) {
       if (!raw || typeof raw !== 'string') return false;
       let clean = raw.replace(/[\x00-\x1F\x7F]/g, "").trim();
       return /^01\d{14}21.+$/.test(clean);
     }
 
-    // Очистка криптохвоста GS1 (Честный Знак)
     function cleanGS1Crypto(raw) {
       if (!raw) return "";
 
@@ -310,12 +534,11 @@
     }
 
     function updateUI() {
+      counterVal.textContent = scannedCodes.length;
       if (batchModeCheck.checked) {
-        sessionInfo.textContent = `В текущей сессии кодов: ${scannedCodes.length}`;
-        downloadBtn.style.display = scannedCodes.length > 0 ? 'block' : 'none';
-        clearBtn.style.display = scannedCodes.length > 0 ? 'block' : 'none';
+        downloadBtn.style.display = scannedCodes.length > 0 ? 'flex' : 'none';
+        clearBtn.style.display = scannedCodes.length > 0 ? 'flex' : 'none';
       } else {
-        sessionInfo.textContent = 'Режим: Одиночное сканирование';
         downloadBtn.style.display = 'none';
         clearBtn.style.display = 'none';
       }
@@ -323,24 +546,24 @@
 
     batchModeCheck.addEventListener('change', () => {
       if (!batchModeCheck.checked && scannedCodes.length > 0) {
-        if (!confirm('Выключение режима очистит текущую сессию. Продолжить?')) {
+        if (!confirm('Выключение накопительного режима сбросит текущие коды. Продолжить?')) {
           batchModeCheck.checked = true;
           return;
         }
         scannedCodes = [];
         lastScannedCode = '';
         resultBox.className = '';
-        resultBox.textContent = 'Нажмите «Запустить камеру»';
+        resultBox.innerHTML = 'Нажмите «Запустить сканер» для начала работы';
       }
       updateUI();
     });
 
     clearBtn.addEventListener('click', () => {
-      if (confirm('Очистить текущую сессию сканирования?')) {
+      if (confirm('Очистить все отсканированные коды?')) {
         scannedCodes = [];
         lastScannedCode = '';
         resultBox.className = '';
-        resultBox.textContent = 'Сессия очищена. Готов к работе.';
+        resultBox.innerHTML = 'Список очищен. Готов к сканированию.';
         updateUI();
       }
     });
@@ -349,7 +572,7 @@
       try {
         scanning = true;
         toggleBtn.textContent = 'Остановить';
-        toggleBtn.style.background = '#d32f2f';
+        toggleBtn.classList.add('active');
 
         const hints = new Map();
         hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
@@ -365,9 +588,9 @@
                 lastScanTime = now;
                 lastScannedCode = rawText;
                 
-                if (navigator.vibrate) navigator.vibrate([150, 50, 150]);
+                if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
                 resultBox.className = 'invalid-alert';
-                resultBox.innerHTML = `<strong>ОШИБКА: Не GS1 код!</strong><br>Формат: ${result.getBarcodeFormat()}<br>${escapeHtml(rawText)}`;
+                resultBox.innerHTML = `<span class="status-badge">⚠️ Не GS1 маркировка</span><div>${escapeHtml(rawText)}</div>`;
               }
               return;
             }
@@ -388,7 +611,7 @@
                 if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
                 
                 resultBox.className = 'duplicate-alert';
-                resultBox.innerHTML = `<strong>ВНИМАНИЕ! ДУБЛИКАТ:</strong><br>${escapeHtml(finalCode)}`;
+                resultBox.innerHTML = `<span class="status-badge">⛔ Дубликат! Код уже добавлен</span><div>${escapeHtml(finalCode)}</div>`;
                 return;
               }
               
@@ -397,14 +620,14 @@
               if (navigator.vibrate) navigator.vibrate(80);
               
               resultBox.className = 'success-alert';
-              resultBox.innerHTML = `<strong>[№${scannedCodes.length}] Добавлен (GS1):</strong><br>${escapeHtml(finalCode)}`;
+              resultBox.innerHTML = `<span class="status-badge">✅ [№${scannedCodes.length}] Успешно добавлен</span><div>${escapeHtml(finalCode)}</div>`;
               resultBox.scrollTop = resultBox.scrollHeight;
               updateUI();
               
             } else {
               if (navigator.vibrate) navigator.vibrate(80);
               resultBox.className = 'success-alert';
-              resultBox.innerHTML = `<strong>GS1 Код:</strong><br>${escapeHtml(finalCode)}`;
+              resultBox.innerHTML = `<span class="status-badge">✅ GS1 DataMatrix</span><div>${escapeHtml(finalCode)}</div>`;
             }
           }
         });
@@ -417,8 +640,8 @@
     function stopScan() {
       scanning = false;
       codeReader.reset();
-      toggleBtn.textContent = 'Запустить камеру';
-      toggleBtn.style.background = '#1976d2';
+      toggleBtn.textContent = 'Запустить сканер';
+      toggleBtn.classList.remove('active');
     }
 
     toggleBtn.addEventListener('click', () => {
@@ -437,7 +660,7 @@
       const now = new Date();
       const dateStr = now.toISOString().slice(0,10);
       const timeStr = now.toTimeString().slice(0,8).replace(/:/g, '-');
-      const filename = `session_${dateStr}_${timeStr}.txt`;
+      const filename = `gs1_codes_${dateStr}_${timeStr}.txt`;
       
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
