@@ -104,7 +104,6 @@
       font-size: 0.9rem;
     }
 
-    /* Область камеры */
     #camera-container {
       position: relative;
       flex: 1;
@@ -119,7 +118,6 @@
       object-fit: cover;
     }
 
-    /* Идеально отцентрованная рамка */
     .overlay-frame {
       position: absolute;
       top: 50%;
@@ -135,7 +133,6 @@
       overflow: hidden;
     }
 
-    /* Угловые элементы */
     .corner-tl, .corner-tr, .corner-bl, .corner-br {
       position: absolute;
       width: 22px;
@@ -174,7 +171,6 @@
       border-bottom-right-radius: 18px;
     }
 
-    /* Анимированная лазерная линия */
     .scan-laser {
       position: absolute;
       left: 0;
@@ -191,7 +187,6 @@
       100% { top: 94%; }
     }
 
-    /* Нижняя панель */
     #controls {
       padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 16px;
       background: rgba(13, 17, 23, 0.95);
@@ -368,10 +363,68 @@
       display: none; 
       max-width: 80px; 
     }
+
+    /* Всплывающий баннер обновления */
+    #update-modal {
+      position: fixed;
+      top: env(safe-area-inset-top, 16px);
+      left: 16px;
+      right: 16px;
+      background: #1e293b;
+      border: 1px solid #3b82f6;
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px var(--accent-glow);
+      z-index: 1000;
+      animation: slideDown 0.3s ease-out;
+    }
+
+    @keyframes slideDown {
+      from { transform: translateY(-100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+
+    .update-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .update-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .update-desc {
+      font-size: 0.78rem;
+      color: #94a3b8;
+    }
+
+    #update-btn {
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 4px 12px var(--success-glow);
+      padding: 8px 14px;
+      font-size: 0.85rem;
+      border-radius: 10px;
+      flex: 0 0 auto;
+    }
   </style>
   <script src="https://unpkg.com/@zxing/library@latest"></script>
 </head>
 <body>
+
+  <div id="update-modal">
+    <div class="update-text">
+      <div class="update-title">✨ Доступна новая версия!</div>
+      <div class="update-desc">Обновите для получения новых функций</div>
+    </div>
+    <button id="update-btn">Установить</button>
+  </div>
 
   <header>
     <div class="brand">
@@ -416,11 +469,37 @@
   </div>
 
   <script>
+    // Логика обнаружения обновлений и вызова плашки
+    let newWorker;
+    const updateModal = document.getElementById('update-modal');
+    const updateBtn = document.getElementById('update-btn');
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then((reg) => {
+        // Принудительно проверяем наличие изменений на GitHub
         reg.update();
+
+        reg.addEventListener('updatefound', () => {
+          newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            // Новая версия скачана в фоновом режиме и ждет подтверждения
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              updateModal.style.display = 'flex';
+            }
+          });
+        });
       }).catch(console.error);
 
+      // Перезагрузка страницы, как только новый worker активировался
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+
+      // Проверка при возврате в приложение
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
           navigator.serviceWorker.getRegistration().then((reg) => {
@@ -430,11 +509,12 @@
       });
     }
 
-    window.addEventListener('pagehide', () => {
-      if ('caches' in window) {
-        caches.keys().then((names) => {
-          names.forEach((name) => caches.delete(name));
-        });
+    // Нажатие на кнопку «Установить»
+    updateBtn.addEventListener('click', () => {
+      if (newWorker) {
+        newWorker.postMessage({ action: 'SKIP_WAITING' });
+      } else {
+        window.location.reload();
       }
     });
 
