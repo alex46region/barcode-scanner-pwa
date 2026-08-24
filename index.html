@@ -3,13 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Сканер Кодов Pro</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#1976d2">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { 
+      box-sizing: border-box; 
+      margin: 0; 
+      padding: 0; 
+    }
     
     html, body {
       width: 100%;
@@ -139,6 +146,11 @@
       color: #fff !important;
     }
 
+    .invalid-alert {
+      background-color: #e65100 !important;
+      color: #fff !important;
+    }
+
     .success-alert {
       background-color: #2e7d32 !important;
       color: #fff !important;
@@ -169,7 +181,7 @@
 </head>
 <body>
 
-  <header>Сканер ШК & DataMatrix</header>
+  <header>Сканер GS1 & DataMatrix</header>
 
   <div id="camera-container">
     <video id="video" autoplay muted playsinline></video>
@@ -196,9 +208,30 @@
   </div>
 
   <script>
+    // Регистрация SW с проверкой обновлений при старте
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(console.error);
+      navigator.serviceWorker.register('sw.js').then((reg) => {
+        reg.update(); // Принудительно проверяем обновления на сервере
+      }).catch(console.error);
+
+      // Проверка обновлений при возврате на вкладку
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          navigator.serviceWorker.getRegistration().then((reg) => {
+            if (reg) reg.update();
+          });
+        }
+      });
     }
+
+    // Очистка кэша при закрытии вкладки / приложения
+    window.addEventListener('pagehide', () => {
+      if ('caches' in window) {
+        caches.keys().then((names) => {
+          names.forEach((name) => caches.delete(name));
+        });
+      }
+    });
 
     const codeReader = new ZXing.BrowserMultiFormatReader();
     const videoElem = document.getElementById('video');
@@ -223,7 +256,14 @@
         .replace(/'/g, "&#039;");
     }
 
-    // Жесткая очистка криптохвоста GS1 (Честный Знак)
+    // Валидация GS1 структуры маркировки
+    function isGS1Code(raw) {
+      if (!raw || typeof raw !== 'string') return false;
+      let clean = raw.replace(/[\x00-\x1F\x7F]/g, "").trim();
+      return /^01\d{14}21.+$/.test(clean);
+    }
+
+    // Очистка криптохвоста GS1 (Честный Знак)
     function cleanGS1Crypto(raw) {
       if (!raw) return "";
 
@@ -318,10 +358,24 @@
           if (result) {
             const now = Date.now();
             const rawText = result.getText();
+
+            // 1. Проверка на GS1
+            if (!isGS1Code(rawText)) {
+              if (rawText !== lastScannedCode || (now - lastScanTime > 1500)) {
+                lastScanTime = now;
+                lastScannedCode = rawText;
+                
+                if (navigator.vibrate) navigator.vibrate([150, 50, 150]);
+                resultBox.className = 'invalid-alert';
+                resultBox.innerHTML = `<strong>ОШИБКА: Не GS1 код!</strong><br>Формат: ${result.getBarcodeFormat()}<br>${escapeHtml(rawText)}`;
+              }
+              return;
+            }
+
+            // 2. Очистка криптохвоста
             const finalCode = cleanGS1Crypto(rawText);
 
             if (batchModeCheck.checked) {
-              // 1. Быстрая защита от дребезга камеры на миллисекундах
               if (finalCode === lastScannedCode && (now - lastScanTime < 1500)) {
                 return; 
               }
@@ -329,29 +383,28 @@
               lastScanTime = now;
               lastScannedCode = finalCode;
 
-              // 2. Жесткая защита от ПОВТОРНОГО сканирования в сессии
+              // 3. Проверка на дубликат
               if (scannedCodes.includes(finalCode)) {
-                if (navigator.vibrate) navigator.vibrate([200, 100, 200]); // Тройное предупреждение
+                if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
                 
                 resultBox.className = 'duplicate-alert';
                 resultBox.innerHTML = `<strong>ВНИМАНИЕ! ДУБЛИКАТ:</strong><br>${escapeHtml(finalCode)}`;
-                return; // Прерываем добавление
+                return;
               }
               
-              // 3. Успешное добавление нового кода
+              // 4. Успешное сохранение
               scannedCodes.push(finalCode);
               if (navigator.vibrate) navigator.vibrate(80);
               
               resultBox.className = 'success-alert';
-              resultBox.innerHTML = `<strong>[№${scannedCodes.length}] Добавлен:</strong><br>${escapeHtml(finalCode)}`;
+              resultBox.innerHTML = `<strong>[№${scannedCodes.length}] Добавлен (GS1):</strong><br>${escapeHtml(finalCode)}`;
               resultBox.scrollTop = resultBox.scrollHeight;
               updateUI();
               
             } else {
-              // Одиночный режим
               if (navigator.vibrate) navigator.vibrate(80);
-              resultBox.className = '';
-              resultBox.innerHTML = `<strong>Формат:</strong> ${result.getBarcodeFormat()}<br><strong>Код:</strong> ${escapeHtml(finalCode)}`;
+              resultBox.className = 'success-alert';
+              resultBox.innerHTML = `<strong>GS1 Код:</strong><br>${escapeHtml(finalCode)}`;
             }
           }
         });
@@ -373,11 +426,9 @@
       else startScan();
     });
 
-    // Экспорт кодов с ПОРЯДКОВЫМИ НОМЕРАМИ в .txt файл
     downloadBtn.addEventListener('click', () => {
       if (scannedCodes.length === 0) return;
       
-      // Форматируем каждую строку файла: "ПорядковыйНомер;КодМаркировки"
       const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
       const fileContent = linesWithNumbers.join('\r\n');
       
