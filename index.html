@@ -218,33 +218,64 @@
     let lastScannedCode = '';
     let lastScanTime = 0;
 
-    // Очистка криптохвоста GS1 (Честный Знак)
+    // Безопасное экранирование для корректного отображения спецсимволов (<, >, &)
+    function escapeHtml(text) {
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // Очистка криптохвоста GS1 (Честный Знак: теги 91, 92, 93)
     function cleanGS1Crypto(text) {
       let clean = text;
       
-      // 1. Разделение по спецсимволу GS (ASCII 29)
+      // Вариант 1: Разделитель GS (ASCII 29 / \x1d) присутствует в потоке данных
       if (clean.includes(String.fromCharCode(29))) {
         const parts = clean.split(String.fromCharCode(29));
         let rebuilt = '';
         for (let part of parts) {
+          // Если часть начинается с тега криптохвоста (91, 92, 93) - прерываем сборку
           if (part.startsWith('91') || part.startsWith('92') || part.startsWith('93')) {
             break;
           }
-          rebuilt += (rebuilt ? String.fromCharCode(29) : '') + part;
+          rebuilt += part;
         }
-        clean = rebuilt;
+        return rebuilt.replace(/[\x00-\x1F\x7F]/g, "").trim();
       } 
       
-      // 2. Отсечение по стандартным идентификаторам применения (AI 91 / 92)
-      if (clean.startsWith('01') && clean.includes('21')) {
-        const idxCrypto91 = clean.indexOf('91', 21);
-        if (idxCrypto91 > 0) clean = clean.substring(0, idxCrypto91);
+      // Вариант 2: Слитная строка без управляющих символов ASCII 29
+      // Структура Честного Знака: 01 (2 знака) + GTIN (14 знаков) + 21 (2 знака) + Серийный номер + Хвост
+      const gs1Regex = /^(01\d{14}21)(.+)$/;
+      const match = clean.match(gs1Regex);
+      
+      if (match) {
+        const prefix = match[1]; // 01...21
+        let rest = match[2];     // Серийный номер + криптохвост
         
-        const idxCrypto92 = clean.indexOf('92', 21);
-        if (idxCrypto92 > 0) clean = clean.substring(0, idxCrypto92);
+        // Для воды/молока/пива/табака криптохвост часто: 93 + 4 символа (всего 6 символов в конце)
+        if (rest.length > 6 && rest.slice(-6, -4) === '93') {
+          rest = rest.slice(0, -6);
+          return (prefix + rest).replace(/[\x00-\x1F\x7F]/g, "").trim();
+        }
+        
+        // Для обуви/одежды/фармы: отсечение по идентификаторам 91 или 92
+        const idx91 = rest.lastIndexOf('91');
+        if (idx91 !== -1 && (idx91 === 6 || idx91 === 7 || idx91 === 13)) {
+          rest = rest.substring(0, idx91);
+          return (prefix + rest).replace(/[\x00-\x1F\x7F]/g, "").trim();
+        }
+        
+        const idx92 = rest.lastIndexOf('92');
+        if (idx92 !== -1 && (idx92 === 6 || idx92 === 7 || idx92 === 13)) {
+          rest = rest.substring(0, idx92);
+          return (prefix + rest).replace(/[\x00-\x1F\x7F]/g, "").trim();
+        }
       }
       
-      // Удаление любых управляющих символов ASCII (0-31)
+      // Удаляем возможные управляющие символы ASCII (0-31)
       return clean.replace(/[\x00-\x1F\x7F]/g, "").trim();
     }
 
@@ -296,14 +327,14 @@
             const rawText = result.getText();
             const format = result.getBarcodeFormat();
             
-            // Обработка GS1 маркировки
+            // Очищаем код от криптохвоста
             let finalCode = rawText;
             if (format === 'DATA_MATRIX' || rawText.startsWith('01')) {
               finalCode = cleanGS1Crypto(rawText);
             }
 
             if (batchModeCheck.checked) {
-              // Защита от дребезга / повторного сканирования одного и того же кода в течение 2 сек
+              // Защита от дублей при удержании камеры (2 сек интервал)
               if (finalCode === lastScannedCode && (now - lastScanTime < 2000)) {
                 return; 
               }
@@ -314,12 +345,13 @@
               scannedCodes.push(finalCode);
               if (navigator.vibrate) navigator.vibrate(100);
               
-              resultBox.innerHTML = `<strong>[№${scannedCodes.length}] Добавлен:</strong><br>${finalCode}`;
+              // Безопасная вставка через escapeHtml
+              resultBox.innerHTML = `<strong>[№${scannedCodes.length}] Добавлен:</strong><br>${escapeHtml(finalCode)}`;
               resultBox.scrollTop = resultBox.scrollHeight;
               updateUI();
             } else {
               if (navigator.vibrate) navigator.vibrate(100);
-              resultBox.innerHTML = `<strong>Формат:</strong> ${format}<br><strong>Код:</strong> ${finalCode}`;
+              resultBox.innerHTML = `<strong>Формат:</strong> ${format}<br><strong>Код:</strong> ${escapeHtml(finalCode)}`;
             }
           }
         });
