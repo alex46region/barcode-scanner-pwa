@@ -1,5 +1,5 @@
 // Меняйте номер версии (например, v12, v13...), когда вносите изменения в код
-const CACHE_NAME = 'scanner-pwa-v13';
+const CACHE_NAME = 'scanner-pwa-v12';
 
 const ASSETS = [
   './',
