@@ -131,6 +131,17 @@
       max-height: 70px;
       font-size: 0.85rem;
       overflow-y: auto;
+      transition: background-color 0.2s ease;
+    }
+
+    .duplicate-alert {
+      background-color: #d32f2f !important;
+      color: #fff !important;
+    }
+
+    .success-alert {
+      background-color: #2e7d32 !important;
+      color: #fff !important;
     }
 
     .btn-group {
@@ -212,12 +223,10 @@
         .replace(/'/g, "&#039;");
     }
 
-    // Жесткая и надежная очистка криптохвоста
+    // Жесткая очистка криптохвоста GS1 (Честный Знак)
     function cleanGS1Crypto(raw) {
       if (!raw) return "";
 
-      // 1. Проверяем наличие управляющих спецсимволов FNC1/GS (ASCII < 32)
-      // Если они есть, сразу отсекаем блоки 91, 92, 93, 8005
       let text = raw;
       for (let i = 0; i < 32; i++) {
         const char = String.fromCharCode(i);
@@ -231,16 +240,13 @@
         }
       }
 
-      // 2. Если в начале идет GTIN (01 + 14 цифр) и серийник (21):
       if (text.startsWith("01") && text.length > 18) {
-        const gtinPrefix = text.substring(0, 16); // 01 + 14 цифр GTIN
-        const ai21 = text.substring(16, 18);     // 21
+        const gtinPrefix = text.substring(0, 16);
+        const ai21 = text.substring(16, 18);
 
         if (ai21 === "21") {
           let serialAndTail = text.substring(18);
 
-          // Правило 1: Если в конце строки есть 93 + 4 символа проверки (всего 6 знаков)
-          // Пример: 5<j!5cz5SK6gE93uVjb -> хвост '93uVjb', серийник '5<j!5cz5SK6gE'
           if (serialAndTail.length > 6) {
             const checkPos = serialAndTail.length - 6;
             if (serialAndTail.substring(checkPos, checkPos + 2) === "93") {
@@ -248,7 +254,6 @@
             }
           }
 
-          // Правило 2: Если криптохвост 91 или 92
           const idx91 = serialAndTail.lastIndexOf("91");
           if (idx91 > 0 && (serialAndTail.length - idx91) >= 4) {
             return gtinPrefix + "21" + serialAndTail.substring(0, idx91);
@@ -261,7 +266,6 @@
         }
       }
 
-      // Если явных маркеров не найдено, отдаем очищенный от служебных байтов текст
       return text.replace(/[\x00-\x1F\x7F]/g, "").trim();
     }
 
@@ -285,6 +289,8 @@
         }
         scannedCodes = [];
         lastScannedCode = '';
+        resultBox.className = '';
+        resultBox.textContent = 'Нажмите «Запустить камеру»';
       }
       updateUI();
     });
@@ -293,6 +299,7 @@
       if (confirm('Очистить текущую сессию сканирования?')) {
         scannedCodes = [];
         lastScannedCode = '';
+        resultBox.className = '';
         resultBox.textContent = 'Сессия очищена. Готов к работе.';
         updateUI();
       }
@@ -311,26 +318,39 @@
           if (result) {
             const now = Date.now();
             const rawText = result.getText();
-            
-            // Запускаем очистку для всех считанных кодов
             const finalCode = cleanGS1Crypto(rawText);
 
             if (batchModeCheck.checked) {
-              if (finalCode === lastScannedCode && (now - lastScanTime < 2000)) {
+              // 1. Быстрая защита от дребезга камеры на миллисекундах
+              if (finalCode === lastScannedCode && (now - lastScanTime < 1500)) {
                 return; 
               }
               
-              lastScannedCode = finalCode;
               lastScanTime = now;
+              lastScannedCode = finalCode;
+
+              // 2. Жесткая защита от ПОВТОРНОГО сканирования в сессии
+              if (scannedCodes.includes(finalCode)) {
+                if (navigator.vibrate) navigator.vibrate([200, 100, 200]); // Тройное предупреждение
+                
+                resultBox.className = 'duplicate-alert';
+                resultBox.innerHTML = `<strong>ВНИМАНИЕ! ДУБЛИКАТ:</strong><br>${escapeHtml(finalCode)}`;
+                return; // Прерываем добавление
+              }
               
+              // 3. Успешное добавление нового кода
               scannedCodes.push(finalCode);
-              if (navigator.vibrate) navigator.vibrate(100);
+              if (navigator.vibrate) navigator.vibrate(80);
               
+              resultBox.className = 'success-alert';
               resultBox.innerHTML = `<strong>[№${scannedCodes.length}] Добавлен:</strong><br>${escapeHtml(finalCode)}`;
               resultBox.scrollTop = resultBox.scrollHeight;
               updateUI();
+              
             } else {
-              if (navigator.vibrate) navigator.vibrate(100);
+              // Одиночный режим
+              if (navigator.vibrate) navigator.vibrate(80);
+              resultBox.className = '';
               resultBox.innerHTML = `<strong>Формат:</strong> ${result.getBarcodeFormat()}<br><strong>Код:</strong> ${escapeHtml(finalCode)}`;
             }
           }
@@ -353,10 +373,14 @@
       else startScan();
     });
 
+    // Экспорт кодов с ПОРЯДКОВЫМИ НОМЕРАМИ в .txt файл
     downloadBtn.addEventListener('click', () => {
       if (scannedCodes.length === 0) return;
       
-      const fileContent = scannedCodes.join('\r\n');
+      // Форматируем каждую строку файла: "ПорядковыйНомер;КодМаркировки"
+      const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
+      const fileContent = linesWithNumbers.join('\r\n');
+      
       const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
       
       const now = new Date();
