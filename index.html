@@ -9,127 +9,165 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    * { 
+      box-sizing: border-box; 
+      margin: 0; 
+      padding: 0; 
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
       background: #121212;
       color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body {
       display: flex;
       flex-direction: column;
-      height: 100vh;
     }
+
     header {
-      padding: 14px;
+      padding: 12px 16px;
       text-align: center;
       background: #1e1e1e;
-      font-size: 1.1rem;
-      font-weight: bold;
+      font-size: 1rem;
+      font-weight: 700;
+      flex-shrink: 0;
       border-bottom: 1px solid #2d2d2d;
     }
+
     #camera-container {
       position: relative;
       flex: 1;
+      min-height: 0;
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
       background: #000;
     }
+
     video {
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
+
     .overlay {
       position: absolute;
-      width: 70%;
-      max-width: 260px;
+      width: 65%;
+      max-width: 240px;
       aspect-ratio: 1;
       border: 2px dashed #1976d2;
       border-radius: 12px;
       pointer-events: none;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
     }
+
     #controls {
-      padding: 16px;
+      padding: 12px 16px;
       background: #1e1e1e;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
+      flex-shrink: 0;
       border-top: 1px solid #2d2d2d;
     }
+
     .mode-setting {
       display: flex;
       align-items: center;
       justify-content: space-between;
       background: #2a2a2a;
-      padding: 10px 14px;
+      padding: 8px 12px;
       border-radius: 8px;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
     }
+
     .switch {
       position: relative;
       display: inline-block;
-      width: 46px;
+      width: 44px;
       height: 24px;
     }
-    .switch input { opacity: 0; width: 0; height: 0; }
+
+    .switch input { 
+      opacity: 0; 
+      width: 0; 
+      height: 0; 
+    }
+
     .slider {
       position: absolute;
       cursor: pointer;
-      top: 0; left: 0; right: 0; bottom: 0;
+      inset: 0;
       background-color: #555;
       transition: .3s;
       border-radius: 24px;
     }
+
     .slider:before {
       position: absolute;
       content: "";
-      height: 18px; width: 18px;
-      left: 3px; bottom: 3px;
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
       background-color: white;
       transition: .3s;
       border-radius: 50%;
     }
-    input:checked + .slider { background-color: #1976d2; }
-    input:checked + .slider:before { transform: translateX(22px); }
+
+    input:checked + .slider { 
+      background-color: #1976d2; 
+    }
+    
+    input:checked + .slider:before { 
+      transform: translateX(20px); 
+    }
+
+    #session-info {
+      font-size: 0.8rem;
+      color: #aaa;
+      text-align: center;
+    }
 
     #result-box {
       background: #2a2a2a;
-      padding: 12px;
+      padding: 8px 12px;
       border-radius: 8px;
       word-break: break-all;
       font-family: monospace;
-      min-height: 54px;
-      font-size: 0.9rem;
-      max-height: 100px;
+      min-height: 48px;
+      max-height: 70px;
+      font-size: 0.85rem;
       overflow-y: auto;
     }
+
     .btn-group {
       display: flex;
-      gap: 10px;
+      gap: 8px;
     }
+
     button {
       flex: 1;
-      padding: 14px;
-      font-size: 1rem;
+      padding: 12px;
+      font-size: 0.95rem;
       border-radius: 8px;
       border: none;
       color: white;
       font-weight: 600;
       cursor: pointer;
     }
+
     #toggle-btn { background: #1976d2; }
     #download-btn { background: #388e3c; display: none; }
-    #clear-btn { background: #555; display: none; max-width: 80px; }
+    #clear-btn { background: #555; display: none; max-width: 75px; }
     button:active { opacity: 0.8; }
-    
-    #session-info {
-      font-size: 0.85rem;
-      color: #aaa;
-      text-align: center;
-      margin-top: -4px;
-    }
   </style>
   <script src="https://unpkg.com/@zxing/library@latest"></script>
 </head>
@@ -180,16 +218,15 @@
     let lastScannedCode = '';
     let lastScanTime = 0;
 
-    // Функция очистки криптохвоста GS1 (Честный Знак)
+    // Очистка криптохвоста GS1 (Честный Знак)
     function cleanGS1Crypto(text) {
       let clean = text;
       
-      // Шаблон 1: Разделение по спецсимволу GS (ASCII 29)
+      // 1. Разделение по спецсимволу GS (ASCII 29)
       if (clean.includes(String.fromCharCode(29))) {
         const parts = clean.split(String.fromCharCode(29));
         let rebuilt = '';
         for (let part of parts) {
-          // Если натыкаемся на Идентификаторы Применения криптохвоста (91, 92, 93), прекращаем сборку
           if (part.startsWith('91') || part.startsWith('92') || part.startsWith('93')) {
             break;
           }
@@ -198,7 +235,7 @@
         clean = rebuilt;
       } 
       
-      // Шаблон 2: Если сканеры «съели» ASCII 29, чистим по вхождению подстрок криптохвоста для РФ маркировки
+      // 2. Отсечение по стандартным идентификаторам применения (AI 91 / 92)
       if (clean.startsWith('01') && clean.includes('21')) {
         const idxCrypto91 = clean.indexOf('91', 21);
         if (idxCrypto91 > 0) clean = clean.substring(0, idxCrypto91);
@@ -207,7 +244,7 @@
         if (idxCrypto92 > 0) clean = clean.substring(0, idxCrypto92);
       }
       
-      // Удаляем любые управляющие непечатные символы ASCII (0-31), чтобы файл не бился
+      // Удаление любых управляющих символов ASCII (0-31)
       return clean.replace(/[\x00-\x1F\x7F]/g, "").trim();
     }
 
@@ -225,7 +262,7 @@
 
     batchModeCheck.addEventListener('change', () => {
       if (!batchModeCheck.checked && scannedCodes.length > 0) {
-        if (!confirm('Выключение накопительного режима очистит сессию. Продолжить?')) {
+        if (!confirm('Выключение режима очистит текущую сессию. Продолжить?')) {
           batchModeCheck.checked = true;
           return;
         }
@@ -250,7 +287,6 @@
         toggleBtn.textContent = 'Остановить';
         toggleBtn.style.background = '#d32f2f';
 
-        // Максимальное качество декодирования
         const hints = new Map();
         hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
@@ -260,14 +296,14 @@
             const rawText = result.getText();
             const format = result.getBarcodeFormat();
             
-            // Запускаем правило очистки GS1 для DataMatrix и кодов, начинающихся с GTIN (01)
+            // Обработка GS1 маркировки
             let finalCode = rawText;
             if (format === 'DATA_MATRIX' || rawText.startsWith('01')) {
               finalCode = cleanGS1Crypto(rawText);
             }
 
             if (batchModeCheck.checked) {
-              // Защита от дребезга / повторного считывания одной и той же марки (пауза 2 секунды)
+              // Защита от дребезга / повторного сканирования одного и того же кода в течение 2 сек
               if (finalCode === lastScannedCode && (now - lastScanTime < 2000)) {
                 return; 
               }
@@ -282,7 +318,6 @@
               resultBox.scrollTop = resultBox.scrollHeight;
               updateUI();
             } else {
-              // Одиночный режим
               if (navigator.vibrate) navigator.vibrate(100);
               resultBox.innerHTML = `<strong>Формат:</strong> ${format}<br><strong>Код:</strong> ${finalCode}`;
             }
@@ -306,15 +341,13 @@
       else startScan();
     });
 
-    // Выгрузка собранных марок в текстовый файл
+    // Экспорт кодов в .txt файл
     downloadBtn.addEventListener('click', () => {
       if (scannedCodes.length === 0) return;
       
-      // Объединяем коды переносом строки (совместимо с Windows/Linux/Android)
       const fileContent = scannedCodes.join('\r\n');
       const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
       
-      // Формируем имя файла с датой и временем
       const now = new Date();
       const dateStr = now.toISOString().slice(0,10);
       const timeStr = now.toTimeString().slice(0,8).replace(/:/g, '-');
