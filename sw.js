@@ -1,4 +1,4 @@
-const CACHE_NAME = 'scanner-pwa-v6';
+const CACHE_NAME = 'scanner-pwa-v7';
 const ASSETS = [
   './',
   './index.html',
