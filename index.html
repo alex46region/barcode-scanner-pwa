@@ -9,11 +9,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <style>
-    * { 
-      box-sizing: border-box; 
-      margin: 0; 
-      padding: 0; 
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     
     html, body {
       width: 100%;
@@ -95,11 +91,7 @@
       height: 24px;
     }
 
-    .switch input { 
-      opacity: 0; 
-      width: 0; 
-      height: 0; 
-    }
+    .switch input { opacity: 0; width: 0; height: 0; }
 
     .slider {
       position: absolute;
@@ -113,22 +105,15 @@
     .slider:before {
       position: absolute;
       content: "";
-      height: 18px;
-      width: 18px;
-      left: 3px;
-      bottom: 3px;
+      height: 18px; width: 18px;
+      left: 3px; bottom: 3px;
       background-color: white;
       transition: .3s;
       border-radius: 50%;
     }
 
-    input:checked + .slider { 
-      background-color: #1976d2; 
-    }
-    
-    input:checked + .slider:before { 
-      transform: translateX(20px); 
-    }
+    input:checked + .slider { background-color: #1976d2; }
+    input:checked + .slider:before { transform: translateX(20px); }
 
     #session-info {
       font-size: 0.8rem;
@@ -218,7 +203,6 @@
     let lastScannedCode = '';
     let lastScanTime = 0;
 
-    // Безопасное экранирование спецсимволов HTML (<, >, &, ")
     function escapeHtml(text) {
       return text
         .replace(/&/g, "&amp;")
@@ -228,69 +212,57 @@
         .replace(/'/g, "&#039;");
     }
 
-    // Надежный парсер GS1 / Честный Знак для отсечения криптохвоста
+    // Жесткая и надежная очистка криптохвоста
     function cleanGS1Crypto(raw) {
       if (!raw) return "";
 
-      // 1. Нормализуем все вариации разделителей GS (ASCII 29, \u001d, \x1d)
-      let text = raw.replace(/[\u001d\x1d]/g, "<GS>");
-
-      // 2. Если внутри есть разделители GS, отсекаем криптохвосты (91, 92, 93, 8005)
-      if (text.includes("<GS>")) {
-        const parts = text.split("<GS>");
-        let result = "";
-        for (let part of parts) {
-          if (!part) continue;
-          if (part.startsWith("91") || part.startsWith("92") || part.startsWith("93") || part.startsWith("8005")) {
-            break;
-          }
-          result += part;
+      // 1. Проверяем наличие управляющих спецсимволов FNC1/GS (ASCII < 32)
+      // Если они есть, сразу отсекаем блоки 91, 92, 93, 8005
+      let text = raw;
+      for (let i = 0; i < 32; i++) {
+        const char = String.fromCharCode(i);
+        if (text.includes(char)) {
+          text = text.split(char).filter(Boolean).filter(part => 
+            !part.startsWith("91") && 
+            !part.startsWith("92") && 
+            !part.startsWith("93") && 
+            !part.startsWith("8005")
+          ).join("");
         }
-        return result.replace(/[\x00-\x1F\x7F]/g, "").trim();
       }
 
-      // 3. Если сканер передал сплошную строку без разделителей:
-      // Структура GS1: 01 (2) + GTIN (14 цифр) + 21 (2) + Серийный номер
+      // 2. Если в начале идет GTIN (01 + 14 цифр) и серийник (21):
       if (text.startsWith("01") && text.length > 18) {
-        const gtinPrefix = text.substring(0, 16); // "01" + 14 цифр GTIN
-        const ai21 = text.substring(16, 18);     // "21"
+        const gtinPrefix = text.substring(0, 16); // 01 + 14 цифр GTIN
+        const ai21 = text.substring(16, 18);     // 21
 
         if (ai21 === "21") {
-          const rest = text.substring(18); // Серийник + Хвост
+          let serialAndTail = text.substring(18);
 
-          // Вариант А: Хвост типа '93' (например: 93uVjb)
-          if (rest.length > 6 && rest.slice(-6, -4) === "93") {
-            const serial = rest.slice(0, -6);
-            return gtinPrefix + "21" + serial;
-          }
-
-          // Вариант Б: Серийник 13 символов (молоко/вода/одежда/обувь)
-          if (rest.length > 13) {
-            const tag = rest.substring(13, 15);
-            if (tag === "91" || tag === "92" || tag === "93") {
-              return gtinPrefix + "21" + rest.substring(0, 13);
+          // Правило 1: Если в конце строки есть 93 + 4 символа проверки (всего 6 знаков)
+          // Пример: 5<j!5cz5SK6gE93uVjb -> хвост '93uVjb', серийник '5<j!5cz5SK6gE'
+          if (serialAndTail.length > 6) {
+            const checkPos = serialAndTail.length - 6;
+            if (serialAndTail.substring(checkPos, checkPos + 2) === "93") {
+              return gtinPrefix + "21" + serialAndTail.substring(0, checkPos);
             }
           }
 
-          // Вариант В: Серийник 7 символов (табак/сыры)
-          if (rest.length > 7) {
-            const tag = rest.substring(7, 9);
-            if (tag === "91" || tag === "92" || tag === "93" || tag === "80") {
-              return gtinPrefix + "21" + rest.substring(0, 7);
-            }
+          // Правило 2: Если криптохвост 91 или 92
+          const idx91 = serialAndTail.lastIndexOf("91");
+          if (idx91 > 0 && (serialAndTail.length - idx91) >= 4) {
+            return gtinPrefix + "21" + serialAndTail.substring(0, idx91);
           }
 
-          // Вариант Г: Серийник 6 символов (вода/молоко)
-          if (rest.length > 6) {
-            const tag = rest.substring(6, 8);
-            if (tag === "91" || tag === "92" || tag === "93") {
-              return gtinPrefix + "21" + rest.substring(0, 6);
-            }
+          const idx92 = serialAndTail.lastIndexOf("92");
+          if (idx92 > 0 && (serialAndTail.length - idx92) >= 4) {
+            return gtinPrefix + "21" + serialAndTail.substring(0, idx92);
           }
         }
       }
 
-      return text.replace(/<GS>/g, "").replace(/[\x00-\x1F\x7F]/g, "").trim();
+      // Если явных маркеров не найдено, отдаем очищенный от служебных байтов текст
+      return text.replace(/[\x00-\x1F\x7F]/g, "").trim();
     }
 
     function updateUI() {
@@ -339,16 +311,11 @@
           if (result) {
             const now = Date.now();
             const rawText = result.getText();
-            const format = result.getBarcodeFormat();
             
-            // Очищаем GS1 / DataMatrix код от криптохвоста
-            let finalCode = rawText;
-            if (format === 'DATA_MATRIX' || rawText.startsWith('01')) {
-              finalCode = cleanGS1Crypto(rawText);
-            }
+            // Запускаем очистку для всех считанных кодов
+            const finalCode = cleanGS1Crypto(rawText);
 
             if (batchModeCheck.checked) {
-              // Анти-дребезг: пауза 2 сек на повтор одного и того же кода
               if (finalCode === lastScannedCode && (now - lastScanTime < 2000)) {
                 return; 
               }
@@ -364,7 +331,7 @@
               updateUI();
             } else {
               if (navigator.vibrate) navigator.vibrate(100);
-              resultBox.innerHTML = `<strong>Формат:</strong> ${format}<br><strong>Код:</strong> ${escapeHtml(finalCode)}`;
+              resultBox.innerHTML = `<strong>Формат:</strong> ${result.getBarcodeFormat()}<br><strong>Код:</strong> ${escapeHtml(finalCode)}`;
             }
           }
         });
@@ -386,7 +353,6 @@
       else startScan();
     });
 
-    // Экспорт кодов текущей сессии в текстовый файл
     downloadBtn.addEventListener('click', () => {
       if (scannedCodes.length === 0) return;
       
