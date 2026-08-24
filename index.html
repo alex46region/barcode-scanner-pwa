@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Сканер Кодов</title>
+  <title>Сканер Кодов Pro</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#1976d2">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -19,11 +19,12 @@
       height: 100vh;
     }
     header {
-      padding: 16px;
+      padding: 14px;
       text-align: center;
       background: #1e1e1e;
       font-size: 1.1rem;
       font-weight: bold;
+      border-bottom: 1px solid #2d2d2d;
     }
     #camera-container {
       position: relative;
@@ -42,12 +43,12 @@
     .overlay {
       position: absolute;
       width: 70%;
-      max-width: 280px;
+      max-width: 260px;
       aspect-ratio: 1;
-      border: 2px dashed rgba(255, 255, 255, 0.6);
+      border: 2px dashed #1976d2;
       border-radius: 12px;
       pointer-events: none;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
     }
     #controls {
       padding: 16px;
@@ -55,26 +56,79 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
+      border-top: 1px solid #2d2d2d;
     }
-    button {
-      padding: 12px;
-      font-size: 1rem;
+    .mode-setting {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #2a2a2a;
+      padding: 10px 14px;
       border-radius: 8px;
-      border: none;
-      background: #1976d2;
-      color: white;
-      font-weight: 600;
-      cursor: pointer;
+      font-size: 0.95rem;
     }
-    button:active { background: #1565c0; }
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 46px;
+      height: 24px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #555;
+      transition: .3s;
+      border-radius: 24px;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px; width: 18px;
+      left: 3px; bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+    input:checked + .slider { background-color: #1976d2; }
+    input:checked + .slider:before { transform: translateX(22px); }
+
     #result-box {
       background: #2a2a2a;
       padding: 12px;
       border-radius: 8px;
       word-break: break-all;
       font-family: monospace;
-      min-height: 48px;
-      font-size: 0.95rem;
+      min-height: 54px;
+      font-size: 0.9rem;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+    button {
+      flex: 1;
+      padding: 14px;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: none;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #toggle-btn { background: #1976d2; }
+    #download-btn { background: #388e3c; display: none; }
+    #clear-btn { background: #555; display: none; max-width: 80px; }
+    button:active { opacity: 0.8; }
+    
+    #session-info {
+      font-size: 0.85rem;
+      color: #aaa;
+      text-align: center;
+      margin-top: -4px;
     }
   </style>
   <script src="https://unpkg.com/@zxing/library@latest"></script>
@@ -89,8 +143,22 @@
   </div>
 
   <div id="controls">
-    <div id="result-box">Нажмите «Старт» и наведите камеру на код</div>
-    <button id="toggle-btn">Запустить камеру</button>
+    <div class="mode-setting">
+      <span>Накопительный режим (Сессия)</span>
+      <label class="switch">
+        <input type="checkbox" id="batch-mode">
+        <span class="slider"></span>
+      </label>
+    </div>
+    
+    <div id="session-info">Режим: Одиночное сканирование</div>
+    <div id="result-box">Нажмите «Запустить камеру»</div>
+
+    <div class="btn-group">
+      <button id="clear-btn">Сброс</button>
+      <button id="toggle-btn">Запустить камеру</button>
+      <button id="download-btn">Скачать .TXT</button>
+    </div>
   </div>
 
   <script>
@@ -102,8 +170,79 @@
     const videoElem = document.getElementById('video');
     const resultBox = document.getElementById('result-box');
     const toggleBtn = document.getElementById('toggle-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const clearBtn = document.getElementById('clear-btn');
+    const batchModeCheck = document.getElementById('batch-mode');
+    const sessionInfo = document.getElementById('session-info');
 
     let scanning = false;
+    let scannedCodes = [];
+    let lastScannedCode = '';
+    let lastScanTime = 0;
+
+    // Функция очистки криптохвоста GS1 (Честный Знак)
+    function cleanGS1Crypto(text) {
+      let clean = text;
+      
+      // Шаблон 1: Разделение по спецсимволу GS (ASCII 29)
+      if (clean.includes(String.fromCharCode(29))) {
+        const parts = clean.split(String.fromCharCode(29));
+        let rebuilt = '';
+        for (let part of parts) {
+          // Если натыкаемся на Идентификаторы Применения криптохвоста (91, 92, 93), прекращаем сборку
+          if (part.startsWith('91') || part.startsWith('92') || part.startsWith('93')) {
+            break;
+          }
+          rebuilt += (rebuilt ? String.fromCharCode(29) : '') + part;
+        }
+        clean = rebuilt;
+      } 
+      
+      // Шаблон 2: Если сканеры «съели» ASCII 29, чистим по вхождению подстрок криптохвоста для РФ маркировки
+      if (clean.startsWith('01') && clean.includes('21')) {
+        const idxCrypto91 = clean.indexOf('91', 21);
+        if (idxCrypto91 > 0) clean = clean.substring(0, idxCrypto91);
+        
+        const idxCrypto92 = clean.indexOf('92', 21);
+        if (idxCrypto92 > 0) clean = clean.substring(0, idxCrypto92);
+      }
+      
+      // Удаляем любые управляющие непечатные символы ASCII (0-31), чтобы файл не бился
+      return clean.replace(/[\x00-\x1F\x7F]/g, "").trim();
+    }
+
+    function updateUI() {
+      if (batchModeCheck.checked) {
+        sessionInfo.textContent = `В текущей сессии кодов: ${scannedCodes.length}`;
+        downloadBtn.style.display = scannedCodes.length > 0 ? 'block' : 'none';
+        clearBtn.style.display = scannedCodes.length > 0 ? 'block' : 'none';
+      } else {
+        sessionInfo.textContent = 'Режим: Одиночное сканирование';
+        downloadBtn.style.display = 'none';
+        clearBtn.style.display = 'none';
+      }
+    }
+
+    batchModeCheck.addEventListener('change', () => {
+      if (!batchModeCheck.checked && scannedCodes.length > 0) {
+        if (!confirm('Выключение накопительного режима очистит сессию. Продолжить?')) {
+          batchModeCheck.checked = true;
+          return;
+        }
+        scannedCodes = [];
+        lastScannedCode = '';
+      }
+      updateUI();
+    });
+
+    clearBtn.addEventListener('click', () => {
+      if (confirm('Очистить текущую сессию сканирования?')) {
+        scannedCodes = [];
+        lastScannedCode = '';
+        resultBox.textContent = 'Сессия очищена. Готов к работе.';
+        updateUI();
+      }
+    });
 
     async function startScan() {
       try {
@@ -111,17 +250,46 @@
         toggleBtn.textContent = 'Остановить';
         toggleBtn.style.background = '#d32f2f';
 
+        // Максимальное качество декодирования
         const hints = new Map();
         hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
         await codeReader.decodeFromVideoDevice(undefined, videoElem, (result, err) => {
           if (result) {
-            resultBox.innerHTML = `<strong>Формат:</strong> ${result.getBarcodeFormat()}<br><strong>Данные:</strong> ${result.getText()}`;
-            if (navigator.vibrate) navigator.vibrate(100);
+            const now = Date.now();
+            const rawText = result.getText();
+            const format = result.getBarcodeFormat();
+            
+            // Запускаем правило очистки GS1 для DataMatrix и кодов, начинающихся с GTIN (01)
+            let finalCode = rawText;
+            if (format === 'DATA_MATRIX' || rawText.startsWith('01')) {
+              finalCode = cleanGS1Crypto(rawText);
+            }
+
+            if (batchModeCheck.checked) {
+              // Защита от дребезга / повторного считывания одной и той же марки (пауза 2 секунды)
+              if (finalCode === lastScannedCode && (now - lastScanTime < 2000)) {
+                return; 
+              }
+              
+              lastScannedCode = finalCode;
+              lastScanTime = now;
+              
+              scannedCodes.push(finalCode);
+              if (navigator.vibrate) navigator.vibrate(100);
+              
+              resultBox.innerHTML = `<strong>[№${scannedCodes.length}] Добавлен:</strong><br>${finalCode}`;
+              resultBox.scrollTop = resultBox.scrollHeight;
+              updateUI();
+            } else {
+              // Одиночный режим
+              if (navigator.vibrate) navigator.vibrate(100);
+              resultBox.innerHTML = `<strong>Формат:</strong> ${format}<br><strong>Код:</strong> ${finalCode}`;
+            }
           }
         });
       } catch (err) {
-        resultBox.textContent = 'Ошибка доступа к камере: ' + err.message;
+        resultBox.textContent = 'Ошибка камеры: ' + err.message;
         stopScan();
       }
     }
@@ -136,6 +304,28 @@
     toggleBtn.addEventListener('click', () => {
       if (scanning) stopScan();
       else startScan();
+    });
+
+    // Выгрузка собранных марок в текстовый файл
+    downloadBtn.addEventListener('click', () => {
+      if (scannedCodes.length === 0) return;
+      
+      // Объединяем коды переносом строки (совместимо с Windows/Linux/Android)
+      const fileContent = scannedCodes.join('\r\n');
+      const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
+      
+      // Формируем имя файла с датой и временем
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0,10);
+      const timeStr = now.toTimeString().slice(0,8).replace(/:/g, '-');
+      const filename = `session_${dateStr}_${timeStr}.txt`;
+      
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     });
   </script>
 </body>
