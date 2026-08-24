@@ -143,33 +143,10 @@
       z-index: 2;
     }
 
-    .corner-tl {
-      top: 0;
-      left: 0;
-      border-width: 4px 0 0 4px;
-      border-top-left-radius: 18px;
-    }
-
-    .corner-tr {
-      top: 0;
-      right: 0;
-      border-width: 4px 4px 0 0;
-      border-top-right-radius: 18px;
-    }
-
-    .corner-bl {
-      bottom: 0;
-      left: 0;
-      border-width: 0 0 4px 4px;
-      border-bottom-left-radius: 18px;
-    }
-
-    .corner-br {
-      bottom: 0;
-      right: 0;
-      border-width: 0 4px 4px 0;
-      border-bottom-right-radius: 18px;
-    }
+    .corner-tl { top: 0; left: 0; border-width: 4px 0 0 4px; border-top-left-radius: 18px; }
+    .corner-tr { top: 0; right: 0; border-width: 4px 4px 0 0; border-top-right-radius: 18px; }
+    .corner-bl { bottom: 0; left: 0; border-width: 0 0 4px 4px; border-bottom-left-radius: 18px; }
+    .corner-br { bottom: 0; right: 0; border-width: 0 4px 4px 0; border-bottom-right-radius: 18px; }
 
     .scan-laser {
       position: absolute;
@@ -364,7 +341,7 @@
       max-width: 80px; 
     }
 
-    /* Всплывающий баннер обновления */
+    /* Модальное окно обновления */
     #update-modal {
       position: fixed;
       top: env(safe-area-inset-top, 16px);
@@ -380,11 +357,32 @@
       gap: 12px;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 20px var(--accent-glow);
       z-index: 1000;
-      animation: slideDown 0.3s ease-out;
+      animation: slideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Тост успешного обновления */
+    #success-toast {
+      position: fixed;
+      top: env(safe-area-inset-top, 16px);
+      left: 16px;
+      right: 16px;
+      background: rgba(16, 185, 129, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: none;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), 0 0 25px var(--success-glow);
+      z-index: 1000;
+      color: #fff;
+      animation: slideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     @keyframes slideDown {
-      from { transform: translateY(-100%); opacity: 0; }
+      from { transform: translateY(-120%); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
     }
 
@@ -395,13 +393,13 @@
     }
 
     .update-title {
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       font-weight: 700;
       color: #fff;
     }
 
     .update-desc {
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       color: #94a3b8;
     }
 
@@ -421,9 +419,17 @@
   <div id="update-modal">
     <div class="update-text">
       <div class="update-title">✨ Доступна новая версия!</div>
-      <div class="update-desc">Обновите для получения новых функций</div>
+      <div class="update-desc">Нажмите для применения обновления</div>
     </div>
     <button id="update-btn">Установить</button>
+  </div>
+
+  <div id="success-toast">
+    <div style="font-size: 1.4rem;">🎉</div>
+    <div class="update-text">
+      <div class="update-title" style="color: #fff;">Приложение успешно обновлено!</div>
+      <div class="update-desc" style="color: rgba(255,255,255,0.85);">Все новые функции активны и готовы к работе</div>
+    </div>
   </div>
 
   <header>
@@ -469,20 +475,36 @@
   </div>
 
   <script>
-    // Логика обнаружения обновлений и вызова плашки
+    // Проверка показа уведомления об успешном обновлении
+    window.addEventListener('DOMContentLoaded', () => {
+      if (sessionStorage.getItem('pwa_just_updated') === 'true') {
+        sessionStorage.removeItem('pwa_just_updated');
+        const successToast = document.getElementById('success-toast');
+        successToast.style.display = 'flex';
+        
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+
+        // Плавное скрытие через 3.5 секунды
+        setTimeout(() => {
+          successToast.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+          successToast.style.opacity = '0';
+          successToast.style.transform = 'translateY(-120%)';
+          setTimeout(() => successToast.style.display = 'none', 500);
+        }, 3500);
+      }
+    });
+
     let newWorker;
     const updateModal = document.getElementById('update-modal');
     const updateBtn = document.getElementById('update-btn');
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then((reg) => {
-        // Принудительно проверяем наличие изменений на GitHub
         reg.update();
 
         reg.addEventListener('updatefound', () => {
           newWorker = reg.installing;
           newWorker.addEventListener('statechange', () => {
-            // Новая версия скачана в фоновом режиме и ждет подтверждения
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
               updateModal.style.display = 'flex';
             }
@@ -490,16 +512,15 @@
         });
       }).catch(console.error);
 
-      // Перезагрузка страницы, как только новый worker активировался
       let refreshing = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!refreshing) {
           refreshing = true;
+          sessionStorage.setItem('pwa_just_updated', 'true');
           window.location.reload();
         }
       });
 
-      // Проверка при возврате в приложение
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
           navigator.serviceWorker.getRegistration().then((reg) => {
@@ -509,11 +530,11 @@
       });
     }
 
-    // Нажатие на кнопку «Установить»
     updateBtn.addEventListener('click', () => {
       if (newWorker) {
         newWorker.postMessage({ action: 'SKIP_WAITING' });
       } else {
+        sessionStorage.setItem('pwa_just_updated', 'true');
         window.location.reload();
       }
     });
