@@ -1,4 +1,4 @@
-const CACHE_NAME = 'scanner-pwa-v13';
+const CACHE_NAME = 'scanner-pwa-v14';
 
 const ASSETS = [
   './',
