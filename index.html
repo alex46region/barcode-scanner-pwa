@@ -428,12 +428,13 @@
       max-width: 75px; 
     }
 
-    #settings-modal-backdrop {
+    /* Модальное окно настроек */
+    #settings-modal-backdrop, #export-modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.65);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       z-index: 100;
       display: none;
       align-items: center;
@@ -441,7 +442,7 @@
       padding: 16px;
     }
 
-    .settings-modal {
+    .settings-modal, .export-modal {
       background: #161b22;
       border: 1px solid var(--card-border);
       border-radius: 18px;
@@ -503,6 +504,21 @@
     .radio-text-title { font-size: 0.85rem; font-weight: 600; color: #fff; }
     .radio-text-desc { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
 
+    /* Поле текста экспорта */
+    #export-textarea {
+      width: 100%;
+      height: 140px;
+      background: #0d1117;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      color: #34d399;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.75rem;
+      padding: 10px;
+      resize: none;
+      user-select: text;
+    }
+
     #live-toast {
       position: fixed;
       top: max(env(safe-area-inset-top, 10px), 10px);
@@ -539,6 +555,22 @@
     </div>
   </div>
 
+  <!-- Модальное окно экспорта кодов -->
+  <div id="export-modal-backdrop">
+    <div class="export-modal">
+      <div class="settings-title">
+        <span>📋 Экспорт кодов (<span id="export-count">0</span>)</span>
+        <span class="settings-close" id="export-close-btn">&times;</span>
+      </div>
+      <div style="font-size: 0.78rem; color: #9ca3af;">
+        Коды автоматически скопированы в буфер обмена! Вы можете вставить их в Заметки, Telegram или сохранить.
+      </div>
+      <textarea id="export-textarea" readonly></textarea>
+      <button id="copy-again-btn" style="background: #2563eb; width: 100%;"> Скопировать снова</button>
+    </div>
+  </div>
+
+  <!-- Меню настроек -->
   <div id="settings-modal-backdrop">
     <div class="settings-modal">
       <div class="settings-title">
@@ -614,7 +646,7 @@
     <div class="btn-group">
       <button id="clear-btn">Сброс</button>
       <button id="toggle-btn">Запустить сканер</button>
-      <button id="download-btn">Скачать .TXT</button>
+      <button id="download-btn">Выгрузить .TXT</button>
     </div>
   </div>
 
@@ -732,6 +764,35 @@
 
     optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
+
+    // Экспорт модалка
+    const exportBackdrop = document.getElementById('export-modal-backdrop');
+    const exportCloseBtn = document.getElementById('export-close-btn');
+    const exportTextarea = document.getElementById('export-textarea');
+    const exportCount = document.getElementById('export-count');
+    const copyAgainBtn = document.getElementById('copy-again-btn');
+
+    exportCloseBtn.addEventListener('click', () => exportBackdrop.style.display = 'none');
+    exportBackdrop.addEventListener('click', (e) => {
+      if (e.target === exportBackdrop) exportBackdrop.style.display = 'none';
+    });
+
+    copyAgainBtn.addEventListener('click', () => {
+      copyToClipboard(exportTextarea.value);
+      copyAgainBtn.textContent = ' Скопировано!';
+      setTimeout(() => { copyAgainBtn.textContent = ' Скопировать снова'; }, 2000);
+    });
+
+    function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      } else {
+        exportTextarea.focus();
+        exportTextarea.select();
+        document.execCommand('copy');
+      }
+      if (navigator.vibrate) navigator.vibrate(80);
+    }
 
     const codeReader = new ZXing.BrowserMultiFormatReader();
     const videoElem = document.getElementById('video');
@@ -916,45 +977,34 @@
       else startScan();
     });
 
-    // Исправленный экспорт файла
-    downloadBtn.addEventListener('click', async () => {
+    // Экспорт кодов с гарантированным копированием и показом
+    downloadBtn.addEventListener('click', () => {
       if (scannedCodes.length === 0) return;
 
       const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
       const fileContent = linesWithNumbers.join('\r\n');
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10);
-      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
-      const filename = `codes_${dateStr}_${timeStr}.txt`;
 
-      if (navigator.canShare) {
-        try {
-          const file = new File([fileContent], filename, { type: 'text/plain;charset=utf-8' });
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: 'Экспорт кодов маркировки',
-              text: `Отсканировано кодов: ${scannedCodes.length}`
-            });
-            return;
-          }
-        } catch (err) {
-          if (err.name === 'AbortError') return;
-        }
-      }
+      exportCount.textContent = scannedCodes.length;
+      exportTextarea.value = fileContent;
+      exportBackdrop.style.display = 'flex';
 
+      // Автокопирование при нажатии
+      copyToClipboard(fileContent);
+
+      // Фоновая попытка сохранения через URI (если браузер позволяет)
       try {
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10);
+        const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+        const filename = `codes_${dateStr}_${timeStr}.txt`;
         const encodedUri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(fileContent);
         const link = document.createElement('a');
         link.setAttribute('href', encodedUri);
         link.setAttribute('download', filename);
-        link.style.display = 'none';
         document.body.appendChild(link);
         link.click();
-        setTimeout(() => document.body.removeChild(link), 300);
-      } catch (e) {
-        alert('Ошибка при сохранении: ' + e.message);
-      }
+        document.body.removeChild(link);
+      } catch (e) {}
     });
 
     updateUI();
