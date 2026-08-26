@@ -124,13 +124,13 @@
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid var(--card-border);
       color: #e5e7eb;
-      width: 32px;
-      height: 32px;
+      width: 34px;
+      height: 34px;
       border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       cursor: pointer;
     }
 
@@ -162,10 +162,10 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 62vw;
-      max-width: 220px;
-      height: 62vw;
-      max-height: 220px;
+      width: 64vw;
+      max-width: 230px;
+      height: 64vw;
+      max-height: 230px;
       border-radius: 18px;
       pointer-events: none;
       box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
@@ -205,13 +205,13 @@
     }
 
     #controls {
-      padding: 8px 14px calc(8px + env(safe-area-inset-bottom, 8px)) 14px;
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 10px)) 14px;
       background: rgba(13, 17, 23, 0.98);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
       flex-shrink: 0;
       border-top: 1px solid var(--card-border);
       z-index: 20;
@@ -223,15 +223,15 @@
       justify-content: space-between;
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid var(--card-border);
-      padding: 6px 12px;
-      border-radius: 10px;
+      padding: 8px 12px;
+      border-radius: 12px;
     }
 
     .mode-label {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-size: 0.84rem;
+      font-size: 0.88rem;
       font-weight: 600;
       color: var(--text-main);
     }
@@ -240,18 +240,18 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 24px;
-      height: 24px;
+      width: 26px;
+      height: 26px;
       border-radius: 6px;
       background: rgba(59, 130, 246, 0.15);
       color: #60a5fa;
-      font-size: 0.8rem;
+      font-size: 0.85rem;
     }
 
     .switch {
       position: relative;
       display: inline-block;
-      width: 42px;
+      width: 44px;
       height: 24px;
     }
 
@@ -279,18 +279,18 @@
     }
 
     input:checked + .slider { background-color: var(--accent); }
-    input:checked + .slider:before { transform: translateX(18px); }
+    input:checked + .slider:before { transform: translateX(20px); }
 
     #result-box {
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid var(--card-border);
-      padding: 8px 12px;
+      padding: 10px 12px;
       border-radius: 10px;
       word-break: break-all;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      min-height: 42px;
-      max-height: 52px;
-      font-size: 0.78rem;
+      min-height: 46px;
+      max-height: 56px;
+      font-size: 0.8rem;
       line-height: 1.3;
       overflow-y: auto;
       color: var(--text-muted);
@@ -332,8 +332,8 @@
 
     button {
       flex: 1;
-      padding: 12px 14px;
-      font-size: 0.9rem;
+      padding: 13px 14px;
+      font-size: 0.92rem;
       border-radius: 10px;
       border: none;
       color: #fff;
@@ -371,14 +371,16 @@
       border: 1px solid var(--card-border);
       color: #e5e7eb;
       display: none; 
-      max-width: 70px; 
+      max-width: 75px; 
     }
 
+    /* Модальное окно настроек */
     #settings-modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(4px);
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       z-index: 100;
       display: none;
       align-items: center;
@@ -389,14 +391,14 @@
     .settings-modal {
       background: #161b22;
       border: 1px solid var(--card-border);
-      border-radius: 16px;
+      border-radius: 18px;
       width: 100%;
-      max-width: 320px;
-      padding: 16px;
+      max-width: 330px;
+      padding: 18px;
       display: flex;
       flex-direction: column;
       gap: 14px;
-      box-shadow: 0 16px 36px rgba(0,0,0,0.8);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.8);
       animation: popIn 0.2s ease-out;
     }
 
@@ -406,7 +408,7 @@
     }
 
     .settings-title {
-      font-size: 1rem;
+      font-size: 1.05rem;
       font-weight: 700;
       display: flex;
       justify-content: space-between;
@@ -415,8 +417,17 @@
 
     .settings-close {
       cursor: pointer;
-      font-size: 1.2rem;
+      font-size: 1.3rem;
       color: var(--text-muted);
+      padding: 2px 6px;
+    }
+
+    .settings-section-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
     }
 
     .radio-option {
@@ -424,7 +435,7 @@
       align-items: flex-start;
       gap: 10px;
       background: rgba(255,255,255,0.03);
-      padding: 10px;
+      padding: 10px 12px;
       border-radius: 10px;
       border: 1px solid transparent;
       cursor: pointer;
@@ -468,6 +479,7 @@
 </head>
 <body>
 
+  <!-- Toast автообновления -->
   <div id="live-toast">
     <div style="font-size: 1.2rem;">⚡</div>
     <div>
@@ -476,13 +488,16 @@
     </div>
   </div>
 
+  <!-- Модальное окно настроек -->
   <div id="settings-modal-backdrop">
     <div class="settings-modal">
       <div class="settings-title">
-        <span>⚙️ Настройки сканирования</span>
+        <span>⚙️ Настройки</span>
         <span class="settings-close" id="settings-close-btn">&times;</span>
       </div>
 
+      <!-- Фильтрация кодов -->
+      <div class="settings-section-label">Тип штрихкодов</div>
       <div class="radio-option selected" id="opt-gs1-box">
         <input type="radio" name="scanMode" id="opt-gs1" value="gs1" checked>
         <div>
@@ -525,6 +540,7 @@
   </div>
 
   <div id="controls">
+    <!-- Накопительный режим на главном экране -->
     <div class="mode-card">
       <div class="mode-label">
         <div class="mode-icon">⚡</div>
@@ -535,7 +551,7 @@
         <span class="slider"></span>
       </label>
     </div>
-    
+
     <div id="result-box">Нажмите «Запустить сканер» для начала работы</div>
 
     <div class="btn-group">
@@ -576,25 +592,21 @@
           const worker = reg.installing;
           worker.addEventListener('statechange', () => {
             if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-              // Автоматически применяем новую версию без показа лишних кнопок
               worker.postMessage({ action: 'SKIP_WAITING' });
             }
           });
         });
       }).catch(console.error);
 
-      // При активации нового воркера бесшовно перезагружаем интерфейс
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         sessionStorage.setItem('just_hot_reloaded', '1');
         window.location.reload();
       });
 
-      // Фоновая проверка каждые 20 секунд
       setInterval(() => {
         if (swRegistration) swRegistration.update();
       }, 20000);
 
-      // Мгновенная проверка при возврате в приложение / разблокировке экрана
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && swRegistration) {
           swRegistration.update();
@@ -603,7 +615,7 @@
     }
 
     // ==========================================
-    // НАСТРОЙКИ И РЕЖИМЫ СКАНИРОВАНИЯ
+    // НАСТРОЙКИ (РЕЖИМЫ СКАНИРОВАНИЯ)
     // ==========================================
     const settingsBtn = document.getElementById('settings-btn');
     const settingsBackdrop = document.getElementById('settings-modal-backdrop');
@@ -836,6 +848,8 @@
       link.click();
       document.body.removeChild(link);
     });
+
+    updateUI();
   </script>
 </body>
 </html>
