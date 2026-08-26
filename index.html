@@ -494,7 +494,7 @@
     <div style="font-size: 1.2rem;">⚡</div>
     <div>
       <div style="font-size: 0.82rem; font-weight: 700;">Обновление применено!</div>
-      <div style="font-size: 0.72rem; color: rgba(255,255,255,0.85);">Загружена последняя версия кода</div>
+      <div style="font-size: 0.72rem; color: rgba(255,255,255,0.85);">Загружена актуальная версия</div>
     </div>
   </div>
 
@@ -570,9 +570,9 @@
 
   <script>
     // ==========================================
-    // НАСТОЯЩИЙ LIVE-SYNC ДЕТЕКТОР ИЗМЕНЕНИЙ
+    // СТАБИЛЬНЫЙ LIVE-SYNC ПО ВЕРСИИ
     // ==========================================
-    const CURRENT_HTML_HASH = String(document.documentElement.innerHTML.length);
+    const CURRENT_APP_VERSION = "1.0.1"; // Меняйте эту строчку при выкатке важных правок
 
     function showLiveToast() {
       const toast = document.getElementById('live-toast');
@@ -581,48 +581,44 @@
         toast.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
         toast.style.opacity = '0';
         toast.style.transform = 'translateY(-100%)';
-        setTimeout(() => toast.style.display = 'none', 400);
+        setTimeout(() => {
+          toast.style.display = 'none';
+          toast.style.opacity = '1';
+          toast.style.transform = 'none';
+        }, 400);
       }, 3000);
     }
 
-    if (sessionStorage.getItem('pwa_live_reloaded') === '1') {
-      sessionStorage.removeItem('pwa_live_reloaded');
+    if (sessionStorage.getItem('pwa_just_updated') === '1') {
+      sessionStorage.removeItem('pwa_just_updated');
       showLiveToast();
     }
 
-    async function checkForLiveUpdate() {
+    async function checkVersionUpdate() {
       try {
-        // Запрос страницы напрямую из сети с меткой времени для обхода кэша
-        const response = await fetch(`./index.html?t=${Date.now()}`, {
+        const res = await fetch(`./index.html?t=${Date.now()}`, {
           cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+          headers: { 'Cache-Control': 'no-cache, no-store' }
         });
-        if (response.ok) {
-          const remoteHtml = await response.text();
-          const remoteHash = String(remoteHtml.length);
-
-          // Если длина полученного кода отличается от текущего — на GitHub есть коммит!
-          if (CURRENT_HTML_HASH !== remoteHash && remoteHtml.length > 500) {
-            sessionStorage.setItem('pwa_live_reloaded', '1');
-            window.location.reload(true);
+        if (res.ok) {
+          const text = await res.text();
+          const match = text.match(/const CURRENT_APP_VERSION = ["']([^"']+)["']/);
+          if (match && match[1] && match[1] !== CURRENT_APP_VERSION) {
+            sessionStorage.setItem('pwa_just_updated', '1');
+            window.location.reload();
           }
         }
-      } catch (e) {
-        // Офлайн режим — ничего не делаем
-      }
+      } catch (e) {}
     }
 
-    // Проверка сразу при открытии + каждые 15 секунд + при разворачивании приложения
-    checkForLiveUpdate();
-    setInterval(checkForLiveUpdate, 15000);
+    // Проверка раз в 25 секунд и при разворачивании экрана
+    setInterval(checkVersionUpdate, 25000);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') checkForLiveUpdate();
+      if (document.visibilityState === 'visible') checkVersionUpdate();
     });
 
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').then((reg) => {
-        reg.update();
-      }).catch(console.error);
+      navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch(console.error);
     }
 
     // ==========================================
