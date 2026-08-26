@@ -82,6 +82,9 @@ jobs:
                       minifyEnabled false
                       signingConfig signingConfigs.debug
                   }
+                  debug {
+                      signingConfig signingConfigs.debug
+                  }
               }
 
               compileOptions {
@@ -95,7 +98,18 @@ jobs:
           }
           EOF
 
-          # 4. AndroidManifest.xml
+          # 4. Стили и ресурсы оформления
+          cat << 'EOF' > app/src/main/res/values/styles.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="Theme.AppCompat.NoActionBar">
+                  <item name="android:windowBackground">#0d1117</item>
+                  <item name="android:colorBackground">#0d1117</item>
+              </style>
+          </resources>
+          EOF
+
+          # 5. AndroidManifest.xml
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -107,7 +121,7 @@ jobs:
               <application
                   android:label="Scanner Pro"
                   android:icon="@mipmap/ic_launcher"
-                  android:theme="@style/Theme.AppCompat.NoActionBar"
+                  android:theme="@style/AppTheme"
                   android:usesCleartextTraffic="true">
                   <activity
                       android:name=".MainActivity"
@@ -122,13 +136,13 @@ jobs:
           </manifest>
           EOF
 
-          # 5. Иконка
+          # 6. Иконка приложения
           if [ -f "icon-512.png" ]; then
             cp icon-512.png app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           fi
 
-          # 6. MainActivity.java
-          cat << EOF > app/src/main/java/com/alex46region/scanner/MainActivity.java
+          # 7. MainActivity.java (с жестким экранированием переменных Java)
+          cat << 'EOF' > app/src/main/java/com/alex46region/scanner/MainActivity.java
           package com.alex46region.scanner;
 
           import android.Manifest;
@@ -172,7 +186,7 @@ jobs:
                       }
                   });
 
-                  webView.loadUrl("${APP_URL}");
+                  webView.loadUrl("TARGET_APP_URL");
               }
 
               @Override
@@ -185,6 +199,9 @@ jobs:
               }
           }
           EOF
+
+          # Подставляем реальный URL приложения
+          sed -i "s|TARGET_APP_URL|${APP_URL}|g" app/src/main/java/com/alex46region/scanner/MainActivity.java
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
