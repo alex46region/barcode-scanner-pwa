@@ -145,9 +145,13 @@
       min-height: 0;
       max-height: 100%;
       overflow: hidden;
-      background: #000;
+      background: #090d13;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
+    /* Скрываем системные кнопки Play и делаем видео невидимым до фактического запуска потока */
     video {
       position: absolute;
       top: 0;
@@ -155,8 +159,14 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
+      opacity: 0;
+      transition: opacity 0.3s ease;
       pointer-events: none;
-      background: #000;
+      z-index: 1;
+    }
+
+    video.active {
+      opacity: 1;
     }
 
     video::-webkit-media-controls,
@@ -168,6 +178,34 @@
       -webkit-appearance: none !important;
       opacity: 0 !important;
       visibility: hidden !important;
+    }
+
+    /* Презентабельная заглушка в центре видоискателя до включения камеры */
+    .scanner-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: #4b5563;
+      z-index: 2;
+      transition: opacity 0.25s ease;
+      pointer-events: none;
+    }
+
+    .scanner-placeholder svg {
+      width: 54px;
+      height: 54px;
+      fill: none;
+      stroke: #374151;
+      stroke-width: 1.5;
+    }
+
+    .scanner-placeholder span {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #6b7280;
+      letter-spacing: 0.3px;
     }
 
     .overlay-frame {
@@ -210,6 +248,11 @@
       box-shadow: 0 0 10px #3b82f6;
       animation: scanLaserAnim 2s ease-in-out infinite alternate;
       z-index: 5;
+      display: none;
+    }
+
+    .scan-laser.active {
+      display: block;
     }
 
     @keyframes scanLaserAnim {
@@ -538,12 +581,22 @@
 
   <div id="camera-container">
     <video id="video" autoplay muted playsinline></video>
+    
+    <!-- Презентабельная заглушка видоискателя -->
+    <div class="scanner-placeholder" id="camera-placeholder">
+      <svg viewBox="0 0 24 24">
+        <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="7" y="7" width="10" height="10" rx="2" stroke-dasharray="2 2"/>
+      </svg>
+      <span>Камера ожидает запуска</span>
+    </div>
+
     <div class="overlay-frame">
       <div class="corner-tl"></div>
       <div class="corner-tr"></div>
       <div class="corner-bl"></div>
       <div class="corner-br"></div>
-      <div class="scan-laser"></div>
+      <div class="scan-laser" id="laser"></div>
     </div>
   </div>
 
@@ -570,8 +623,16 @@
 
   <script>
     // ==========================================
-    // ЛОГИКА ОБНОВЛЕНИЯ ЧЕРЕЗ VERSION.JSON + ВИБРАЦИЯ
+    // ЛОГИКА ОБНОВЛЕНИЯ ЧЕРЕЗ VERSION.JSON + ГАРАНТИРОВАННАЯ ВИБРАЦИЯ
     // ==========================================
+    function triggerUpdateVibration() {
+      if (navigator.vibrate) {
+        try {
+          navigator.vibrate([100, 50, 100, 50, 150]);
+        } catch (e) {}
+      }
+    }
+
     function showLiveToast(ver) {
       const toast = document.getElementById('live-toast');
       const toastDesc = document.getElementById('toast-desc');
@@ -580,10 +641,15 @@
       }
       toast.style.display = 'flex';
 
-      // Короткая вибрация успеха: 80мс вибрация, 50мс пауза, 80мс вибрация
-      if (navigator.vibrate) {
-        navigator.vibrate([80, 50, 80]);
-      }
+      // Пытаемся завибрировать сразу
+      triggerUpdateVibration();
+
+      // Если браузер заблокировал вибро без жеста — вибрируем при первом же клике/тапе
+      const oneTimeTapHandler = () => {
+        triggerUpdateVibration();
+        document.removeEventListener('pointerdown', oneTimeTapHandler);
+      };
+      document.addEventListener('pointerdown', oneTimeTapHandler, { once: true });
 
       setTimeout(() => {
         toast.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
@@ -594,10 +660,9 @@
           toast.style.opacity = '1';
           toast.style.transform = 'none';
         }, 400);
-      }, 3000);
+      }, 3500);
     }
 
-    // Проверяем, произошла ли только что перезагрузка после обновления
     const updatedVer = sessionStorage.getItem('pwa_just_updated_ver');
     if (updatedVer) {
       sessionStorage.removeItem('pwa_just_updated_ver');
@@ -612,25 +677,20 @@
         });
         if (res.ok) {
           const data = await res.json();
-          const remoteVersion = data.version;
+          const remoteVersion = String(data.version);
           const localVersion = localStorage.getItem('app_local_version');
 
           if (!localVersion) {
-            // Первый запуск приложения — запоминаем текущую версию
             localStorage.setItem('app_local_version', remoteVersion);
           } else if (localVersion !== remoteVersion) {
-            // Версия на сервере изменилась!
             localStorage.setItem('app_local_version', remoteVersion);
             sessionStorage.setItem('pwa_just_updated_ver', remoteVersion);
-            
-            // Перезагружаем страницу со сбросом кэша
             window.location.reload(true);
           }
         }
       } catch (e) {}
     }
 
-    // Проверка версии каждые 20 секунд и при разворачивании окна
     checkVersionUpdate();
     setInterval(checkVersionUpdate, 20000);
     document.addEventListener('visibilitychange', () => {
@@ -685,10 +745,12 @@
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
 
     // ==========================================
-    // ЛОГИКА СКАНИРОВАНИЯ
+    // ЛОГИКА СКАНИРОВАНИЯ И УПРАВЛЕНИЕ ВИДОИСКАТЕЛЕМ
     // ==========================================
     const codeReader = new ZXing.BrowserMultiFormatReader();
     const videoElem = document.getElementById('video');
+    const placeholder = document.getElementById('camera-placeholder');
+    const laser = document.getElementById('laser');
     const resultBox = document.getElementById('result-box');
     const toggleBtn = document.getElementById('toggle-btn');
     const downloadBtn = document.getElementById('download-btn');
@@ -793,6 +855,13 @@
         hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
         await codeReader.decodeFromVideoDevice(undefined, videoElem, (result, err) => {
+          // Как только видео пошло — скрываем заглушку и показываем лазер
+          if (!videoElem.classList.contains('active')) {
+            videoElem.classList.add('active');
+            placeholder.style.display = 'none';
+            laser.classList.add('active');
+          }
+
           if (result) {
             const now = Date.now();
             const rawText = result.getText();
@@ -850,6 +919,9 @@
     function stopScan() {
       scanning = false;
       codeReader.reset();
+      videoElem.classList.remove('active');
+      placeholder.style.display = 'flex';
+      laser.classList.remove('active');
       toggleBtn.textContent = 'Запустить сканер';
       toggleBtn.classList.remove('active');
     }
