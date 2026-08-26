@@ -25,7 +25,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
@@ -34,10 +34,16 @@ jobs:
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Generate TWA Config and Build APK
+        env:
+          BUBBLEWRAP_KEYSTORE_PASSWORD: "password123"
+          BUBBLEWRAP_KEY_PASSWORD: "password123"
         run: |
           mkdir -p build-twa && cd build-twa
 
-          # 1. Создаем ключ подписи приложения (Keystore)
+          # 1. Настройка путей JDK и Android SDK для Bubblewrap
+          bubblewrap updateConfig --jdkPath="$JAVA_HOME" --androidSdkPath="$ANDROID_HOME"
+
+          # 2. Создание keystore для подписи
           keytool -genkeypair -v \
             -keystore android.keystore \
             -alias android \
@@ -48,7 +54,7 @@ jobs:
             -keypass "password123" \
             -dname "CN=ScannerPro, OU=Scanner, O=Scanner, L=City, S=State, C=RU"
 
-          # 2. Генерируем конфигурационный файл twa-manifest.json автоматически
+          # 3. Автогенерация twa-manifest.json
           REPO_NAME="${{ github.event.repository.name }}"
           USER_NAME="${{ github.repository_owner }}"
 
@@ -85,7 +91,7 @@ jobs:
           }
           EOF
 
-          # 3. Сборка Android проекта и генерация APK
+          # 4. Сборка APK с переданными переменными паролей
           bubblewrap build --skipPwaValidation --signingKeyPath=./android.keystore --signingKeyAlias=android
 
       - name: Upload Signed APK
