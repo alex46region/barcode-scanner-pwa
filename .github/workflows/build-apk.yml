@@ -1,0 +1,61 @@
+name: Build Android APK (TWA)
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli
+
+      - name: Initialize and Build Android APK
+        env:
+          # Замените на URL вашего сайта (например: https://username.github.io/repo/)
+          APP_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/manifest.json"
+        run: |
+          mkdir build-twa && cd build-twa
+          
+          # Автоматическая генерация проекта Android из веб-манифеста
+          bubblewrap init --manifest="${APP_URL}" --directory=. --skipPwaValidation
+          
+          # Генерация временного ключа подписи
+          keytool -genkeypair -v \
+            -keystore android.keystore \
+            -alias android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass "password123" \
+            -keypass "password123" \
+            -dname "CN=ScannerPro, OU=Scanner, O=Scanner, L=City, S=State, C=RU"
+
+          # Сборка готового APK
+          bubblewrap build --signingKeyPath=android.keystore --signingKeyAlias=android
+
+      - name: Upload APK to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScannerPro-Release-APK
+          path: build-twa/*.apk
