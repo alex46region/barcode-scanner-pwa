@@ -33,14 +33,12 @@ jobs:
           REPO_NAME="${{ github.event.repository.name }}"
           APP_URL="https://${USER_NAME}.github.io/${REPO_NAME}/"
 
-          # 1. gradle.properties
           cat << 'EOF' > gradle.properties
           org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
           android.useAndroidX=true
           android.nonTransitiveRClass=true
           EOF
 
-          # 2. settings.gradle
           cat << 'EOF' > settings.gradle
           pluginManagement {
               repositories {
@@ -60,14 +58,12 @@ jobs:
           include ':app'
           EOF
 
-          # 3. build.gradle (корень)
           cat << 'EOF' > build.gradle
           plugins {
               id 'com.android.application' version '8.2.2' apply false
           }
           EOF
 
-          # 4. Генерация ключа подписи
           keytool -genkeypair -v \
             -keystore app/debug.keystore \
             -alias androiddebugkey \
@@ -78,7 +74,6 @@ jobs:
             -keypass "android" \
             -dname "CN=Android Debug,O=Android,C=US"
 
-          # 5. app/build.gradle
           cat << 'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -123,7 +118,6 @@ jobs:
           }
           EOF
 
-          # 6. Ресурсы стилей
           cat << 'EOF' > app/src/main/res/values/styles.xml
           <?xml version="1.0" encoding="utf-8"?>
           <resources>
@@ -141,7 +135,6 @@ jobs:
           </resources>
           EOF
 
-          # 7. Иконка приложения
           ICON_FILE="icon-512.png"
           if [ ! -f "$ICON_FILE" ]; then
             ICON_FILE="icon-192.png"
@@ -155,7 +148,6 @@ jobs:
             cp "$ICON_FILE" app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           fi
 
-          # 8. AndroidManifest.xml
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -182,7 +174,6 @@ jobs:
           </manifest>
           EOF
 
-          # 9. MainActivity.java
           cat << 'EOF' > app/src/main/java/com/alex46region/scanner/MainActivity.java
           package com.alex46region.scanner;
 
@@ -212,12 +203,16 @@ jobs:
                   webView = new WebView(this);
                   setContentView(webView);
 
+                  // Принудительная очистка дискового кэша WebView при старте
+                  webView.clearCache(true);
+
                   WebSettings ws = webView.getSettings();
                   ws.setJavaScriptEnabled(true);
                   ws.setDomStorageEnabled(true);
                   ws.setMediaPlaybackRequiresUserGesture(false);
                   ws.setAllowFileAccess(true);
                   ws.setDatabaseEnabled(true);
+                  ws.setCacheMode(WebSettings.LOAD_DEFAULT);
 
                   webView.setWebViewClient(new WebViewClient());
                   webView.setWebChromeClient(new WebChromeClient() {
