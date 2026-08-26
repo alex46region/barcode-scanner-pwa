@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Java JDK 17
@@ -26,6 +26,7 @@ jobs:
         run: |
           mkdir -p app/src/main/java/com/alex46region/scanner
           mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/mipmap-xxxhdpi
 
           USER_NAME="${{ github.repository_owner }}"
           REPO_NAME="${{ github.event.repository.name }}"
@@ -54,7 +55,7 @@ jobs:
           # 2. build.gradle (корень)
           cat << 'EOF' > build.gradle
           plugins {
-              id 'com.android.application' version '8.2.2' apply false
+              id 'com.android.application' version '8.1.4' apply false
           }
           EOF
 
@@ -82,6 +83,7 @@ jobs:
                       signingConfig signingConfigs.debug
                   }
               }
+
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
                   targetCompatibility JavaVersion.VERSION_17
@@ -93,7 +95,7 @@ jobs:
           }
           EOF
 
-          # 4. AndroidManifest.xml с разрешениями камеры
+          # 4. AndroidManifest.xml
           cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -120,13 +122,12 @@ jobs:
           </manifest>
           EOF
 
-          # 5. Иконка приложения (mipmap)
-          mkdir -p app/src/main/res/mipmap-xxxhdpi
+          # 5. Иконка
           if [ -f "icon-512.png" ]; then
             cp icon-512.png app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
           fi
 
-          # 6. MainActivity.java с автоматическим разрешением камеры для WebView
+          # 6. MainActivity.java
           cat << EOF > app/src/main/java/com/alex46region/scanner/MainActivity.java
           package com.alex46region.scanner;
 
@@ -185,17 +186,18 @@ jobs:
           }
           EOF
 
-      - name: Setup Gradle (No Cache)
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.5'
+          gradle-version: '8.4'
           cache-disabled: true
 
       - name: Build Android Release APK
-        run: gradle assembleRelease --no-daemon --no-build-cache --stacktrace
+        run: gradle assembleRelease --no-daemon --no-build-cache
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ScannerPro-App-APK
           path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
