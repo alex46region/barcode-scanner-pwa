@@ -151,7 +151,6 @@
       justify-content: center;
     }
 
-    /* Скрываем системные кнопки Play и делаем видео невидимым до фактического запуска потока */
     video {
       position: absolute;
       top: 0;
@@ -180,7 +179,6 @@
       visibility: hidden !important;
     }
 
-    /* Презентабельная заглушка в центре видоискателя до включения камеры */
     .scanner-placeholder {
       display: flex;
       flex-direction: column;
@@ -582,7 +580,6 @@
   <div id="camera-container">
     <video id="video" autoplay muted playsinline></video>
     
-    <!-- Презентабельная заглушка видоискателя -->
     <div class="scanner-placeholder" id="camera-placeholder">
       <svg viewBox="0 0 24 24">
         <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -622,9 +619,6 @@
   </div>
 
   <script>
-    // ==========================================
-    // ЛОГИКА ОБНОВЛЕНИЯ ЧЕРЕЗ VERSION.JSON + ГАРАНТИРОВАННАЯ ВИБРАЦИЯ
-    // ==========================================
     function triggerUpdateVibration() {
       if (navigator.vibrate) {
         try {
@@ -641,10 +635,8 @@
       }
       toast.style.display = 'flex';
 
-      // Пытаемся завибрировать сразу
       triggerUpdateVibration();
 
-      // Если браузер заблокировал вибро без жеста — вибрируем при первом же клике/тапе
       const oneTimeTapHandler = () => {
         triggerUpdateVibration();
         document.removeEventListener('pointerdown', oneTimeTapHandler);
@@ -701,9 +693,6 @@
       navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch(console.error);
     }
 
-    // ==========================================
-    // НАСТРОЙКИ СКАНИРОВАНИЯ
-    // ==========================================
     const settingsBtn = document.getElementById('settings-btn');
     const settingsBackdrop = document.getElementById('settings-modal-backdrop');
     const settingsCloseBtn = document.getElementById('settings-close-btn');
@@ -744,9 +733,6 @@
     optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
 
-    // ==========================================
-    // ЛОГИКА СКАНИРОВАНИЯ И УПРАВЛЕНИЕ ВИДОИСКАТЕЛЕМ
-    // ==========================================
     const codeReader = new ZXing.BrowserMultiFormatReader();
     const videoElem = document.getElementById('video');
     const placeholder = document.getElementById('camera-placeholder');
@@ -855,7 +841,6 @@
         hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
         await codeReader.decodeFromVideoDevice(undefined, videoElem, (result, err) => {
-          // Как только видео пошло — скрываем заглушку и показываем лазер
           if (!videoElem.classList.contains('active')) {
             videoElem.classList.add('active');
             placeholder.style.display = 'none';
@@ -931,21 +916,45 @@
       else startScan();
     });
 
-    downloadBtn.addEventListener('click', () => {
+    // Исправленный экспорт файла
+    downloadBtn.addEventListener('click', async () => {
       if (scannedCodes.length === 0) return;
+
       const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
       const fileContent = linesWithNumbers.join('\r\n');
-      const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
       const now = new Date();
-      const dateStr = now.toISOString().slice(0,10);
-      const timeStr = now.toTimeString().slice(0,8).replace(/:/g, '-');
+      const dateStr = now.toISOString().slice(0, 10);
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
       const filename = `codes_${dateStr}_${timeStr}.txt`;
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+
+      if (navigator.canShare) {
+        try {
+          const file = new File([fileContent], filename, { type: 'text/plain;charset=utf-8' });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'Экспорт кодов маркировки',
+              text: `Отсканировано кодов: ${scannedCodes.length}`
+            });
+            return;
+          }
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+        }
+      }
+
+      try {
+        const encodedUri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(fileContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', filename);
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => document.body.removeChild(link), 300);
+      } catch (e) {
+        alert('Ошибка при сохранении: ' + e.message);
+      }
     });
 
     updateUI();
