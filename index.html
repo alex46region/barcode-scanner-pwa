@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
-  <title>GS1 DataMatrix Scanner Pro</title>
+  <title>DataMatrix & Barcode Scanner</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#0d1117">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,8 +14,8 @@
   <style>
     :root {
       --bg-main: #0d1117;
-      --card-bg: rgba(22, 27, 34, 0.85);
-      --card-border: rgba(255, 255, 255, 0.08);
+      --card-bg: rgba(22, 27, 34, 0.95);
+      --card-border: rgba(255, 255, 255, 0.1);
       --accent: #2563eb;
       --accent-glow: rgba(37, 99, 235, 0.35);
       --success: #10b981;
@@ -56,7 +56,6 @@
       justify-content: space-between;
     }
 
-    /* Верхняя панель */
     header {
       padding: env(safe-area-inset-top, 8px) 14px 8px 14px;
       background: rgba(13, 17, 23, 0.95);
@@ -70,22 +69,26 @@
       z-index: 20;
     }
 
-    .brand {
+    .brand-section {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-size: 0.92rem;
-      font-weight: 700;
+      gap: 8px;
     }
 
     .brand-badge {
       background: linear-gradient(135deg, #3b82f6, #1d4ed8);
       color: #fff;
       font-size: 0.65rem;
-      padding: 2px 6px;
+      padding: 3px 6px;
       border-radius: 6px;
       text-transform: uppercase;
       font-weight: 800;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
 
     .counter-badge {
@@ -96,18 +99,31 @@
       font-size: 0.78rem;
       color: var(--text-muted);
       font-weight: 600;
-      display: flex;
-      align-items: center;
-      gap: 6px;
     }
 
     .counter-badge span {
       color: var(--success);
       font-weight: 700;
-      font-size: 0.88rem;
     }
 
-    /* Контейнер камеры - строго зажат между шапкой и панелью */
+    .icon-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--card-border);
+      color: #e5e7eb;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      cursor: pointer;
+    }
+
+    .icon-btn:active {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
     #camera-container {
       position: relative;
       flex: 1 1 0;
@@ -118,7 +134,6 @@
       background: #000;
     }
 
-    /* Видео не распирает контейнер */
     video {
       position: absolute;
       top: 0;
@@ -128,7 +143,6 @@
       object-fit: cover;
     }
 
-    /* Прицел */
     .overlay-frame {
       position: absolute;
       top: 50%;
@@ -176,7 +190,6 @@
       100% { top: 94%; }
     }
 
-    /* Нижняя панель управления - строго на виду */
     #controls {
       padding: 8px 14px calc(8px + env(safe-area-inset-bottom, 8px)) 14px;
       background: rgba(13, 17, 23, 0.98);
@@ -347,7 +360,85 @@
       max-width: 70px; 
     }
 
-    /* Модальные окна */
+    /* Модальное окно настроек */
+    #settings-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .settings-modal {
+      background: #161b22;
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 320px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      box-shadow: 0 16px 36px rgba(0,0,0,0.8);
+      animation: popIn 0.2s ease-out;
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .settings-title {
+      font-size: 1rem;
+      font-weight: 700;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .settings-close {
+      cursor: pointer;
+      font-size: 1.2rem;
+      color: var(--text-muted);
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      background: rgba(255,255,255,0.03);
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+
+    .radio-option.selected {
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.1);
+    }
+
+    .radio-option input {
+      margin-top: 3px;
+    }
+
+    .radio-text-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .radio-text-desc {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Модалки обновления */
     #update-modal, #success-toast {
       position: fixed;
       top: max(env(safe-area-inset-top, 10px), 10px);
@@ -409,7 +500,31 @@
 </head>
 <body>
 
-  <!-- Окно предложения обновить -->
+  <div id="settings-modal-backdrop">
+    <div class="settings-modal">
+      <div class="settings-title">
+        <span>⚙️ Настройки сканирования</span>
+        <span class="settings-close" id="settings-close-btn">&times;</span>
+      </div>
+
+      <div class="radio-option selected" id="opt-gs1-box">
+        <input type="radio" name="scanMode" id="opt-gs1" value="gs1" checked>
+        <div>
+          <div class="radio-text-title">Только GS1 (Честный Знак)</div>
+          <div class="radio-text-desc">Фильтрует сторонние штрихкоды и отсекает криптохвост.</div>
+        </div>
+      </div>
+
+      <div class="radio-option" id="opt-all-box">
+        <input type="radio" name="scanMode" id="opt-all" value="all">
+        <div>
+          <div class="radio-text-title">Универсальный режим</div>
+          <div class="radio-text-desc">Сканирует любые коды (EAN-13, QR, 128 и др.). Если код GS1 — отсекает хвост.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="update-modal">
     <div class="toast-content">
       <div class="toast-title">✨ Доступна новая версия!</div>
@@ -418,7 +533,6 @@
     <button id="update-btn">Установить</button>
   </div>
 
-  <!-- Уведомление об успешном обновлении -->
   <div id="success-toast">
     <div style="font-size: 1.2rem;">🎉</div>
     <div class="toast-content">
@@ -428,12 +542,13 @@
   </div>
 
   <header>
-    <div class="brand">
-      <div class="brand-badge">GS1</div>
-      <span>DataMatrix Pro</span>
+    <div class="brand-section">
+      <div class="brand-badge" id="mode-badge">GS1</div>
+      <span style="font-size: 0.92rem; font-weight: 700;">Scanner Pro</span>
     </div>
-    <div class="counter-badge" id="counter-box">
-      Кодов: <span id="counter-val">0</span>
+    <div class="header-actions">
+      <div class="counter-badge">Кодов: <span id="counter-val">0</span></div>
+      <div class="icon-btn" id="settings-btn" title="Настройки">⚙️</div>
     </div>
   </header>
 
@@ -470,12 +585,12 @@
   </div>
 
   <script>
+    // --- ПРОВЕРКА ОБНОВЛЕНИЙ ---
     function checkUpdateSuccess() {
       if (localStorage.getItem('pwa_app_updated') === '1') {
         localStorage.removeItem('pwa_app_updated');
         const toast = document.getElementById('success-toast');
         toast.style.display = 'flex';
-        
         if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
         setTimeout(() => {
@@ -486,7 +601,6 @@
         }, 3500);
       }
     }
-
     checkUpdateSuccess();
 
     let newWorker;
@@ -496,7 +610,6 @@
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then((reg) => {
         reg.update();
-
         reg.addEventListener('updatefound', () => {
           newWorker = reg.installing;
           newWorker.addEventListener('statechange', () => {
@@ -515,25 +628,56 @@
           window.location.reload();
         }
       });
-
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          navigator.serviceWorker.getRegistration().then((reg) => {
-            if (reg) reg.update();
-          });
-        }
-      });
     }
 
     updateBtn.addEventListener('click', () => {
       localStorage.setItem('pwa_app_updated', '1');
-      if (newWorker) {
-        newWorker.postMessage({ action: 'SKIP_WAITING' });
-      } else {
-        window.location.reload();
-      }
+      if (newWorker) newWorker.postMessage({ action: 'SKIP_WAITING' });
+      else window.location.reload();
     });
 
+    // --- УПРАВЛЕНИЕ НАСТРОЙКАМИ РЕЖИМА СКАНИРОВАНИЯ ---
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsBackdrop = document.getElementById('settings-modal-backdrop');
+    const settingsCloseBtn = document.getElementById('settings-close-btn');
+    const optGs1 = document.getElementById('opt-gs1');
+    const optAll = document.getElementById('opt-all');
+    const optGs1Box = document.getElementById('opt-gs1-box');
+    const optAllBox = document.getElementById('opt-all-box');
+    const modeBadge = document.getElementById('mode-badge');
+
+    let currentScanMode = localStorage.getItem('pwa_scan_mode') || 'gs1';
+
+    function setScanMode(mode) {
+      currentScanMode = mode;
+      localStorage.setItem('pwa_scan_mode', mode);
+      if (mode === 'gs1') {
+        optGs1.checked = true;
+        optGs1Box.classList.add('selected');
+        optAllBox.classList.remove('selected');
+        modeBadge.textContent = 'GS1';
+        modeBadge.style.background = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
+      } else {
+        optAll.checked = true;
+        optAllBox.classList.add('selected');
+        optGs1Box.classList.remove('selected');
+        modeBadge.textContent = 'ALL';
+        modeBadge.style.background = 'linear-gradient(135deg, #8b5cf6, #6d28d9)';
+      }
+    }
+
+    setScanMode(currentScanMode);
+
+    settingsBtn.addEventListener('click', () => settingsBackdrop.style.display = 'flex');
+    settingsCloseBtn.addEventListener('click', () => settingsBackdrop.style.display = 'none');
+    settingsBackdrop.addEventListener('click', (e) => {
+      if (e.target === settingsBackdrop) settingsBackdrop.style.display = 'none';
+    });
+
+    optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
+    optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
+
+    // --- ЛОГИКА СКАНИРОВАНИЯ ---
     const codeReader = new ZXing.BrowserMultiFormatReader();
     const videoElem = document.getElementById('video');
     const resultBox = document.getElementById('result-box');
@@ -549,12 +693,7 @@
     let lastScanTime = 0;
 
     function escapeHtml(text) {
-      return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
     function isGS1Code(raw) {
@@ -565,16 +704,12 @@
 
     function cleanGS1Crypto(raw) {
       if (!raw) return "";
-
       let text = raw;
       for (let i = 0; i < 32; i++) {
         const char = String.fromCharCode(i);
         if (text.includes(char)) {
           text = text.split(char).filter(Boolean).filter(part => 
-            !part.startsWith("91") && 
-            !part.startsWith("92") && 
-            !part.startsWith("93") && 
-            !part.startsWith("8005")
+            !part.startsWith("91") && !part.startsWith("92") && !part.startsWith("93") && !part.startsWith("8005")
           ).join("");
         }
       }
@@ -585,26 +720,22 @@
 
         if (ai21 === "21") {
           let serialAndTail = text.substring(18);
-
           if (serialAndTail.length > 6) {
             const checkPos = serialAndTail.length - 6;
             if (serialAndTail.substring(checkPos, checkPos + 2) === "93") {
               return gtinPrefix + "21" + serialAndTail.substring(0, checkPos);
             }
           }
-
           const idx91 = serialAndTail.lastIndexOf("91");
           if (idx91 > 0 && (serialAndTail.length - idx91) >= 4) {
             return gtinPrefix + "21" + serialAndTail.substring(0, idx91);
           }
-
           const idx92 = serialAndTail.lastIndexOf("92");
           if (idx92 > 0 && (serialAndTail.length - idx92) >= 4) {
             return gtinPrefix + "21" + serialAndTail.substring(0, idx92);
           }
         }
       }
-
       return text.replace(/[\x00-\x1F\x7F]/g, "").trim();
     }
 
@@ -656,12 +787,15 @@
           if (result) {
             const now = Date.now();
             const rawText = result.getText();
+            const formatName = result.getBarcodeFormat() !== undefined ? result.getBarcodeFormat() : 'BARCODE';
 
-            if (!isGS1Code(rawText)) {
+            const isGS1 = isGS1Code(rawText);
+
+            // Если включен режим «Только GS1» и код не GS1:
+            if (currentScanMode === 'gs1' && !isGS1) {
               if (rawText !== lastScannedCode || (now - lastScanTime > 1500)) {
                 lastScanTime = now;
                 lastScannedCode = rawText;
-                
                 if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
                 resultBox.className = 'invalid-alert';
                 resultBox.innerHTML = `<span class="status-badge">⚠️ Не GS1 маркировка</span><div>${escapeHtml(rawText)}</div>`;
@@ -669,36 +803,34 @@
               return;
             }
 
-            const finalCode = cleanGS1Crypto(rawText);
+            // Обработка кода: если GS1 — убираем криптохвост, если другой тип — берем как есть
+            const finalCode = isGS1 ? cleanGS1Crypto(rawText) : rawText.trim();
+            const badgeTitle = isGS1 ? '✅ GS1 DataMatrix' : `✅ Код (${formatName})`;
 
             if (batchModeCheck.checked) {
-              if (finalCode === lastScannedCode && (now - lastScanTime < 1500)) {
-                return; 
-              }
-              
+              if (finalCode === lastScannedCode && (now - lastScanTime < 1500)) return;
+
               lastScanTime = now;
               lastScannedCode = finalCode;
 
               if (scannedCodes.includes(finalCode)) {
                 if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-                
                 resultBox.className = 'duplicate-alert';
                 resultBox.innerHTML = `<span class="status-badge">⛔ Дубликат! Код уже добавлен</span><div>${escapeHtml(finalCode)}</div>`;
                 return;
               }
-              
+
               scannedCodes.push(finalCode);
               if (navigator.vibrate) navigator.vibrate(80);
-              
+
               resultBox.className = 'success-alert';
-              resultBox.innerHTML = `<span class="status-badge">✅ [№${scannedCodes.length}] Успешно добавлен</span><div>${escapeHtml(finalCode)}</div>`;
+              resultBox.innerHTML = `<span class="status-badge">${badgeTitle} [№${scannedCodes.length}]</span><div>${escapeHtml(finalCode)}</div>`;
               resultBox.scrollTop = resultBox.scrollHeight;
               updateUI();
-              
             } else {
               if (navigator.vibrate) navigator.vibrate(80);
               resultBox.className = 'success-alert';
-              resultBox.innerHTML = `<span class="status-badge">✅ GS1 DataMatrix</span><div>${escapeHtml(finalCode)}</div>`;
+              resultBox.innerHTML = `<span class="status-badge">${badgeTitle}</span><div>${escapeHtml(finalCode)}</div>`;
             }
           }
         });
@@ -722,17 +854,13 @@
 
     downloadBtn.addEventListener('click', () => {
       if (scannedCodes.length === 0) return;
-      
       const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
       const fileContent = linesWithNumbers.join('\r\n');
-      
       const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
-      
       const now = new Date();
       const dateStr = now.toISOString().slice(0,10);
       const timeStr = now.toTimeString().slice(0,8).replace(/:/g, '-');
-      const filename = `gs1_codes_${dateStr}_${timeStr}.txt`;
-      
+      const filename = `codes_${dateStr}_${timeStr}.txt`;
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = filename;
