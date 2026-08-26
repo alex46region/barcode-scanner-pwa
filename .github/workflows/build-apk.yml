@@ -13,11 +13,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
       - name: Set up Java JDK 17
         uses: actions/setup-java@v4
         with:
@@ -27,20 +22,22 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
       - name: Install Bubblewrap CLI
         run: npm install -g @bubblewrap/cli
 
-      - name: Initialize and Build Android APK
-        env:
-          # Замените на URL вашего сайта (например: https://username.github.io/repo/)
-          APP_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/manifest.json"
+      - name: Accept Android SDK Licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Generate TWA Config and Build APK
         run: |
-          mkdir build-twa && cd build-twa
-          
-          # Автоматическая генерация проекта Android из веб-манифеста
-          bubblewrap init --manifest="${APP_URL}" --directory=. --skipPwaValidation
-          
-          # Генерация временного ключа подписи
+          mkdir -p build-twa && cd build-twa
+
+          # 1. Создаем ключ подписи приложения (Keystore)
           keytool -genkeypair -v \
             -keystore android.keystore \
             -alias android \
@@ -51,11 +48,49 @@ jobs:
             -keypass "password123" \
             -dname "CN=ScannerPro, OU=Scanner, O=Scanner, L=City, S=State, C=RU"
 
-          # Сборка готового APK
-          bubblewrap build --signingKeyPath=android.keystore --signingKeyAlias=android
+          # 2. Генерируем конфигурационный файл twa-manifest.json автоматически
+          REPO_NAME="${{ github.event.repository.name }}"
+          USER_NAME="${{ github.repository_owner }}"
 
-      - name: Upload APK to Artifacts
+          cat <<EOF > twa-manifest.json
+          {
+            "packageId": "com.${USER_NAME}.${REPO_NAME}",
+            "host": "${USER_NAME}.github.io",
+            "name": "DataMatrix Scanner Pro",
+            "launcherName": "Scanner",
+            "themeColor": "#0d1117",
+            "navigationColor": "#0d1117",
+            "backgroundColor": "#0d1117",
+            "startUrl": "/${REPO_NAME}/index.html",
+            "iconUrl": "https://${USER_NAME}.github.io/${REPO_NAME}/icon-512.png",
+            "maskableIconUrl": "https://${USER_NAME}.github.io/${REPO_NAME}/icon-512.png",
+            "appVersionName": "1.0.0",
+            "appVersionCode": 1,
+            "signingKey": {
+              "path": "./android.keystore",
+              "alias": "android"
+            },
+            "generatorApp": "bubblewrap-cli",
+            "webManifestUrl": "https://${USER_NAME}.github.io/${REPO_NAME}/manifest.json",
+            "fallbackType": "customtabs",
+            "enableNotifications": false,
+            "features": {
+              "locationDelegation": { "enabled": false },
+              "playBilling": { "enabled": false }
+            },
+            "alphaDependencies": { "enabled": false },
+            "enableSiteSettingsShortcut": true,
+            "isChromeOSOnly": false,
+            "isMetaQuest": false
+          }
+          EOF
+
+          # 3. Сборка Android проекта и генерация APK
+          bubblewrap build --skipPwaValidation --signingKeyPath=./android.keystore --signingKeyAlias=android
+
+      - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
           name: ScannerPro-Release-APK
-          path: build-twa/*.apk
+          path: build-twa/app-release-signed.apk
+          if-no-files-found: warn
