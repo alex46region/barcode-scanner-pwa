@@ -148,6 +148,7 @@
       background: #000;
     }
 
+    /* Полное отключение системного значка Play и контролов Android WebView */
     video {
       position: absolute;
       top: 0;
@@ -155,6 +156,19 @@
       width: 100%;
       height: 100%;
       object-fit: cover;
+      pointer-events: none;
+      background: #000;
+    }
+
+    video::-webkit-media-controls,
+    video::-webkit-media-controls-start-playback-button,
+    video::-webkit-media-controls-play-button,
+    video::-webkit-media-controls-overlay-play-button,
+    video::-webkit-media-controls-enclosure {
+      display: none !important;
+      -webkit-appearance: none !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
     }
 
     .overlay-frame {
@@ -374,7 +388,6 @@
       max-width: 75px; 
     }
 
-    /* Модальное окно настроек */
     #settings-modal-backdrop {
       position: fixed;
       inset: 0;
@@ -450,7 +463,6 @@
     .radio-text-title { font-size: 0.85rem; font-weight: 600; color: #fff; }
     .radio-text-desc { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
 
-    /* Всплывающее тихое уведомление о Live-обновлении */
     #live-toast {
       position: fixed;
       top: max(env(safe-area-inset-top, 10px), 10px);
@@ -479,7 +491,6 @@
 </head>
 <body>
 
-  <!-- Toast автообновления -->
   <div id="live-toast">
     <div style="font-size: 1.2rem;">⚡</div>
     <div>
@@ -488,7 +499,6 @@
     </div>
   </div>
 
-  <!-- Модальное окно настроек -->
   <div id="settings-modal-backdrop">
     <div class="settings-modal">
       <div class="settings-title">
@@ -496,7 +506,6 @@
         <span class="settings-close" id="settings-close-btn">&times;</span>
       </div>
 
-      <!-- Фильтрация кодов -->
       <div class="settings-section-label">Тип штрихкодов</div>
       <div class="radio-option selected" id="opt-gs1-box">
         <input type="radio" name="scanMode" id="opt-gs1" value="gs1" checked>
@@ -540,7 +549,6 @@
   </div>
 
   <div id="controls">
-    <!-- Накопительный режим на главном экране -->
     <div class="mode-card">
       <div class="mode-label">
         <div class="mode-icon">⚡</div>
@@ -562,9 +570,6 @@
   </div>
 
   <script>
-    // ==========================================
-    // ЛОГИКА ЖИВОГО ОБНОВЛЕНИЯ (LIVE-RELOAD)
-    // ==========================================
     function showLiveToast() {
       const toast = document.getElementById('live-toast');
       toast.style.display = 'flex';
@@ -614,9 +619,6 @@
       });
     }
 
-    // ==========================================
-    // НАСТРОЙКИ (РЕЖИМЫ СКАНИРОВАНИЯ)
-    // ==========================================
     const settingsBtn = document.getElementById('settings-btn');
     const settingsBackdrop = document.getElementById('settings-modal-backdrop');
     const settingsCloseBtn = document.getElementById('settings-close-btn');
@@ -657,9 +659,6 @@
     optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
 
-    // ==========================================
-    // ОСНОВНОЙ СКАНЕР
-    // ==========================================
     const codeReader = new ZXing.BrowserMultiFormatReader();
     const videoElem = document.getElementById('video');
     const resultBox = document.getElementById('result-box');
