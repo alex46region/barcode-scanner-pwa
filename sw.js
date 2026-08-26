@@ -1,4 +1,4 @@
-const CACHE_NAME = 'scanner-pwa-v15';
+const CACHE_NAME = 'scanner-pwa-v16';
 
 const ASSETS = [
   './',
@@ -20,9 +20,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys.map((k) => {
-          if (k !== CACHE_NAME) {
-            return caches.delete(k);
-          }
+          if (k !== CACHE_NAME) return caches.delete(k);
         })
       )
     )
