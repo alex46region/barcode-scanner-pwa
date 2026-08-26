@@ -148,7 +148,6 @@
       background: #000;
     }
 
-    /* Полное отключение системного значка Play и контролов Android WebView */
     video {
       position: absolute;
       top: 0;
@@ -474,9 +473,9 @@
       align-items: center;
       gap: 10px;
       z-index: 1000;
-      background: rgba(30, 41, 59, 0.95);
+      background: rgba(6, 95, 70, 0.95);
       backdrop-filter: blur(8px);
-      border: 1px solid #3b82f6;
+      border: 1px solid #10b981;
       color: #fff;
       box-shadow: 0 10px 30px rgba(0,0,0,0.7);
       animation: slideInDown 0.3s ease-out;
@@ -494,8 +493,8 @@
   <div id="live-toast">
     <div style="font-size: 1.2rem;">⚡</div>
     <div>
-      <div style="font-size: 0.82rem; font-weight: 700;">Обновлено в реальном времени!</div>
-      <div style="font-size: 0.72rem; color: #94a3b8;">Загружена свежая версия с сервера</div>
+      <div style="font-size: 0.82rem; font-weight: 700;">Обновление применено!</div>
+      <div style="font-size: 0.72rem; color: rgba(255,255,255,0.85);">Загружена последняя версия кода</div>
     </div>
   </div>
 
@@ -570,6 +569,11 @@
   </div>
 
   <script>
+    // ==========================================
+    // НАСТОЯЩИЙ LIVE-SYNC ДЕТЕКТОР ИЗМЕНЕНИЙ
+    // ==========================================
+    const CURRENT_HTML_HASH = String(document.documentElement.innerHTML.length);
+
     function showLiveToast() {
       const toast = document.getElementById('live-toast');
       toast.style.display = 'flex';
@@ -578,47 +582,52 @@
         toast.style.opacity = '0';
         toast.style.transform = 'translateY(-100%)';
         setTimeout(() => toast.style.display = 'none', 400);
-      }, 2500);
+      }, 3000);
     }
 
-    if (sessionStorage.getItem('just_hot_reloaded') === '1') {
-      sessionStorage.removeItem('just_hot_reloaded');
+    if (sessionStorage.getItem('pwa_live_reloaded') === '1') {
+      sessionStorage.removeItem('pwa_live_reloaded');
       showLiveToast();
     }
 
-    let swRegistration = null;
+    async function checkForLiveUpdate() {
+      try {
+        // Запрос страницы напрямую из сети с меткой времени для обхода кэша
+        const response = await fetch(`./index.html?t=${Date.now()}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+        });
+        if (response.ok) {
+          const remoteHtml = await response.text();
+          const remoteHash = String(remoteHtml.length);
+
+          // Если длина полученного кода отличается от текущего — на GitHub есть коммит!
+          if (CURRENT_HTML_HASH !== remoteHash && remoteHtml.length > 500) {
+            sessionStorage.setItem('pwa_live_reloaded', '1');
+            window.location.reload(true);
+          }
+        }
+      } catch (e) {
+        // Офлайн режим — ничего не делаем
+      }
+    }
+
+    // Проверка сразу при открытии + каждые 15 секунд + при разворачивании приложения
+    checkForLiveUpdate();
+    setInterval(checkForLiveUpdate, 15000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForLiveUpdate();
+    });
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then((reg) => {
-        swRegistration = reg;
         reg.update();
-
-        reg.addEventListener('updatefound', () => {
-          const worker = reg.installing;
-          worker.addEventListener('statechange', () => {
-            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-              worker.postMessage({ action: 'SKIP_WAITING' });
-            }
-          });
-        });
       }).catch(console.error);
-
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        sessionStorage.setItem('just_hot_reloaded', '1');
-        window.location.reload();
-      });
-
-      setInterval(() => {
-        if (swRegistration) swRegistration.update();
-      }, 20000);
-
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && swRegistration) {
-          swRegistration.update();
-        }
-      });
     }
 
+    // ==========================================
+    // ЛОГИКА НАСТРОЕК
+    // ==========================================
     const settingsBtn = document.getElementById('settings-btn');
     const settingsBackdrop = document.getElementById('settings-modal-backdrop');
     const settingsCloseBtn = document.getElementById('settings-close-btn');
@@ -659,6 +668,9 @@
     optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
 
+    // ==========================================
+    // ЛОГИКА СКАНИРОВАНИЯ
+    // ==========================================
     const codeReader = new ZXing.BrowserMultiFormatReader();
     const videoElem = document.getElementById('video');
     const resultBox = document.getElementById('result-box');
