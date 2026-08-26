@@ -1,4 +1,4 @@
-name: Build Android APK (TWA)
+name: Build Android APK
 
 on:
   push:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Java JDK 17
@@ -22,81 +22,177 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Bubblewrap CLI
-        run: npm install -g @bubblewrap/cli
-
-      - name: Accept Android SDK Licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      - name: Generate TWA Config and Build APK
-        env:
-          BUBBLEWRAP_KEYSTORE_PASSWORD: "password123"
-          BUBBLEWRAP_KEY_PASSWORD: "password123"
+      - name: Create Native Android Project
         run: |
-          mkdir -p build-twa && cd build-twa
+          mkdir -p app/src/main/java/com/alex46region/scanner
+          mkdir -p app/src/main/res/values
 
-          # 1. Настройка путей JDK и Android SDK для Bubblewrap
-          bubblewrap updateConfig --jdkPath="$JAVA_HOME" --androidSdkPath="$ANDROID_HOME"
-
-          # 2. Создание keystore для подписи
-          keytool -genkeypair -v \
-            -keystore android.keystore \
-            -alias android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -storepass "password123" \
-            -keypass "password123" \
-            -dname "CN=ScannerPro, OU=Scanner, O=Scanner, L=City, S=State, C=RU"
-
-          # 3. Автогенерация twa-manifest.json
-          REPO_NAME="${{ github.event.repository.name }}"
           USER_NAME="${{ github.repository_owner }}"
+          REPO_NAME="${{ github.event.repository.name }}"
+          APP_URL="https://${USER_NAME}.github.io/${REPO_NAME}/"
 
-          cat <<EOF > twa-manifest.json
-          {
-            "packageId": "com.${USER_NAME}.${REPO_NAME}",
-            "host": "${USER_NAME}.github.io",
-            "name": "DataMatrix Scanner Pro",
-            "launcherName": "Scanner",
-            "themeColor": "#0d1117",
-            "navigationColor": "#0d1117",
-            "backgroundColor": "#0d1117",
-            "startUrl": "/${REPO_NAME}/index.html",
-            "iconUrl": "https://${USER_NAME}.github.io/${REPO_NAME}/icon-512.png",
-            "maskableIconUrl": "https://${USER_NAME}.github.io/${REPO_NAME}/icon-512.png",
-            "appVersionName": "1.0.0",
-            "appVersionCode": 1,
-            "signingKey": {
-              "path": "./android.keystore",
-              "alias": "android"
-            },
-            "generatorApp": "bubblewrap-cli",
-            "webManifestUrl": "https://${USER_NAME}.github.io/${REPO_NAME}/manifest.json",
-            "fallbackType": "customtabs",
-            "enableNotifications": false,
-            "features": {
-              "locationDelegation": { "enabled": false },
-              "playBilling": { "enabled": false }
-            },
-            "alphaDependencies": { "enabled": false },
-            "enableSiteSettingsShortcut": true,
-            "isChromeOSOnly": false,
-            "isMetaQuest": false
+          # 1. settings.gradle
+          cat << 'EOF' > settings.gradle
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "ScannerPro"
+          include ':app'
+          EOF
+
+          # 2. build.gradle (корень)
+          cat << 'EOF' > build.gradle
+          plugins {
+              id 'com.android.application' version '8.2.2' apply false
           }
           EOF
 
-          # 4. Сборка APK с переданными переменными паролей
-          bubblewrap build --skipPwaValidation --signingKeyPath=./android.keystore --signingKeyAlias=android
+          # 3. app/build.gradle
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+          }
 
-      - name: Upload Signed APK
+          android {
+              namespace 'com.alex46region.scanner'
+              compileSdk 34
+
+              defaultConfig {
+                  applicationId "com.alex46region.scanner"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+
+              buildTypes {
+                  release {
+                      minifyEnabled false
+                      signingConfig signingConfigs.debug
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+
+          dependencies {
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+          }
+          EOF
+
+          # 4. AndroidManifest.xml с разрешениями камеры
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.CAMERA" />
+              <uses-feature android:name="android.hardware.camera" android:required="false" />
+              <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+              <application
+                  android:label="Scanner Pro"
+                  android:icon="@mipmap/ic_launcher"
+                  android:theme="@style/Theme.AppCompat.NoActionBar"
+                  android:usesCleartextTraffic="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:configChanges="orientation|screenSize|keyboardHidden">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # 5. Иконка приложения (mipmap)
+          mkdir -p app/src/main/res/mipmap-xxxhdpi
+          if [ -f "icon-512.png" ]; then
+            cp icon-512.png app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          fi
+
+          # 6. MainActivity.java с авторазрешением камеры для веб-приложения
+          cat << EOF > app/src/main/java/com/alex46region/scanner/MainActivity.java
+          package com.alex46region.scanner;
+
+          import android.Manifest;
+          import android.content.pm.PackageManager;
+          import android.os.Bundle;
+          import android.webkit.PermissionRequest;
+          import android.webkit.WebChromeClient;
+          import android.webkit.WebSettings;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import androidx.appcompat.app.AppCompatActivity;
+          import androidx.core.app.ActivityCompat;
+          import androidx.core.content.ContextCompat;
+
+          public class MainActivity extends AppCompatActivity {
+              private WebView webView;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                      ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, 101);
+                  }
+
+                  webView = new WebView(this);
+                  setContentView(webView);
+
+                  WebSettings ws = webView.getSettings();
+                  ws.setJavaScriptEnabled(true);
+                  ws.setDomStorageEnabled(true);
+                  ws.setMediaPlaybackRequiresUserGesture(false);
+                  ws.setAllowFileAccess(true);
+                  ws.setDatabaseEnabled(true);
+
+                  webView.setWebViewClient(new WebViewClient());
+                  webView.setWebChromeClient(new WebChromeClient() {
+                      @Override
+                      public void onPermissionRequest(final PermissionRequest request) {
+                          request.grant(request.getResources());
+                      }
+                  });
+
+                  webView.loadUrl("${APP_URL}");
+              }
+
+              @Override
+              public void onBackPressed() {
+                  if (webView.canGoBack()) {
+                      webView.goBack();
+                  } else {
+                      super.onBackPressed();
+                  }
+              }
+          }
+          EOF
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build Android Release APK
+        run: gradle assembleRelease
+
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ScannerPro-Release-APK
-          path: build-twa/app-release-signed.apk
-          if-no-files-found: warn
+          name: ScannerPro-App-APK
+          path: app/build/outputs/apk/release/app-release.apk
