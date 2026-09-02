@@ -562,6 +562,8 @@
     }
   </style>
   <script src="https://unpkg.com/@zxing/library@latest"></script>
+  <!-- SheetJS для создания реальных .xlsx файлов -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -585,15 +587,15 @@
         <div class="format-icon">📄</div>
         <div>
           <div class="format-title">Текстовый файл (.TXT)</div>
-          <div class="format-desc">Классический текстовый список кодов с нумерацией</div>
+          <div class="format-desc">Список кодов с номерами через точку с запятой</div>
         </div>
       </div>
 
       <div class="format-btn-card" id="btn-export-excel">
         <div class="format-icon">📊</div>
         <div>
-          <div class="format-title">Таблица Excel (.CSV)</div>
-          <div class="format-desc">Столбцы «№ п/п» и «Код маркировки» для Excel</div>
+          <div class="format-title">Таблица Excel (.XLSX)</div>
+          <div class="format-desc">Две колонки: «№ п/п» и «Код маркировки»</div>
         </div>
       </div>
     </div>
@@ -989,22 +991,10 @@
       else startScan();
     });
 
-    // Нажатие на кнопку «Выгрузить файл» открывает окно выбора формата
     downloadBtn.addEventListener('click', () => {
       if (scannedCodes.length === 0) return;
       formatBackdrop.style.display = 'flex';
     });
-
-    function downloadFile(content, filename, mimeType) {
-      const encodedUri = `data:${mimeType};charset=utf-8,` + encodeURIComponent(content);
-      const link = document.createElement('a');
-      link.setAttribute('href', encodedUri);
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      if (navigator.vibrate) navigator.vibrate(80);
-    }
 
     function getTimestamp() {
       const now = new Date();
@@ -1019,20 +1009,64 @@
       const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
       const fileContent = linesWithNumbers.join('\r\n');
       const filename = `codes_${getTimestamp()}.txt`;
-      downloadFile(fileContent, filename, 'text/plain');
+
+      const encodedUri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(fileContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      if (navigator.vibrate) navigator.vibrate(80);
     });
 
-    // 2. Выгрузка в формате Excel (.CSV с BOM и заголовками колонок)
+    // 2. Выгрузка в настоящем бинарном формате Excel (.XLSX)
     btnExportExcel.addEventListener('click', () => {
       formatBackdrop.style.display = 'none';
-      // Заголовки таблицы: "№ п/п" и "Код маркировки" (разделитель точка с запятой для русского Excel)
-      let csvContent = '\uFEFF№ п/п;Код маркировки\r\n';
+
+      // Формируем структуру данных
+      const tableData = [
+        ['№ п/п', 'Код маркировки']
+      ];
+
       scannedCodes.forEach((code, index) => {
-        // Код маркировки обернут в кавычки для предотвращения искажений спецсимволов в ячейках
-        csvContent += `${index + 1};"${code.replace(/"/g, '""')}"\r\n`;
+        tableData.push([index + 1, String(code)]);
       });
-      const filename = `codes_${getTimestamp()}.csv`;
-      downloadFile(csvContent, filename, 'text/csv');
+
+      // Создаем лист и книгу через SheetJS
+      const ws = XLSX.utils.aoa_to_sheet(tableData);
+
+      // Принудительно задаем строковый тип для столбца B (Код маркировки), чтобы Excel не обрезал нули
+      for (let r = 1; r < tableData.length; r++) {
+        const cellRef = XLSX.utils.encode_cell({ r: r, c: 1 });
+        if (ws[cellRef]) {
+          ws[cellRef].t = 's';
+        }
+      }
+
+      // Настройка автоширины колонок
+      ws['!cols'] = [
+        { wch: 10 },
+        { wch: 45 }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Маркировка');
+
+      // Генерируем бинарный Base64 для передачи в нативный WebView DownloadListener
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+      const filename = `codes_${getTimestamp()}.xlsx`;
+
+      const uri = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + wbout;
+      const link = document.createElement('a');
+      link.setAttribute('href', uri);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      if (navigator.vibrate) navigator.vibrate(80);
     });
 
     updateUI();
