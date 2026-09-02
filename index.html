@@ -428,12 +428,13 @@
       max-width: 75px; 
     }
 
-    #settings-modal-backdrop {
+    /* Модальные окна */
+    #settings-modal-backdrop, #format-modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.65);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       z-index: 100;
       display: none;
       align-items: center;
@@ -441,7 +442,7 @@
       padding: 16px;
     }
 
-    .settings-modal {
+    .settings-modal, .format-modal {
       background: #161b22;
       border: 1px solid var(--card-border);
       border-radius: 18px;
@@ -473,6 +474,39 @@
       font-size: 1.3rem;
       color: var(--text-muted);
       padding: 2px 6px;
+    }
+
+    .format-btn-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      padding: 14px 16px;
+      border-radius: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .format-btn-card:active {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: #3b82f6;
+    }
+
+    .format-icon {
+      font-size: 1.6rem;
+    }
+
+    .format-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .format-desc {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 2px;
     }
 
     .settings-section-label {
@@ -539,6 +573,33 @@
     </div>
   </div>
 
+  <!-- Модальное окно выбора формата выгрузки -->
+  <div id="format-modal-backdrop">
+    <div class="format-modal">
+      <div class="settings-title">
+        <span>💾 Выберите формат</span>
+        <span class="settings-close" id="format-close-btn">&times;</span>
+      </div>
+
+      <div class="format-btn-card" id="btn-export-txt">
+        <div class="format-icon">📄</div>
+        <div>
+          <div class="format-title">Текстовый файл (.TXT)</div>
+          <div class="format-desc">Классический текстовый список кодов с нумерацией</div>
+        </div>
+      </div>
+
+      <div class="format-btn-card" id="btn-export-excel">
+        <div class="format-icon">📊</div>
+        <div>
+          <div class="format-title">Таблица Excel (.CSV)</div>
+          <div class="format-desc">Столбцы «№ п/п» и «Код маркировки» для Excel</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Меню настроек -->
   <div id="settings-modal-backdrop">
     <div class="settings-modal">
       <div class="settings-title">
@@ -614,7 +675,7 @@
     <div class="btn-group">
       <button id="clear-btn">Сброс</button>
       <button id="toggle-btn">Запустить сканер</button>
-      <button id="download-btn">Скачать .TXT</button>
+      <button id="download-btn">Выгрузить файл</button>
     </div>
   </div>
 
@@ -693,6 +754,7 @@
       navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch(console.error);
     }
 
+    // Настройки
     const settingsBtn = document.getElementById('settings-btn');
     const settingsBackdrop = document.getElementById('settings-modal-backdrop');
     const settingsCloseBtn = document.getElementById('settings-close-btn');
@@ -732,6 +794,17 @@
 
     optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
+
+    // Модалка выбора формата
+    const formatBackdrop = document.getElementById('format-modal-backdrop');
+    const formatCloseBtn = document.getElementById('format-close-btn');
+    const btnExportTxt = document.getElementById('btn-export-txt');
+    const btnExportExcel = document.getElementById('btn-export-excel');
+
+    formatCloseBtn.addEventListener('click', () => formatBackdrop.style.display = 'none');
+    formatBackdrop.addEventListener('click', (e) => {
+      if (e.target === formatBackdrop) formatBackdrop.style.display = 'none';
+    });
 
     const codeReader = new ZXing.BrowserMultiFormatReader();
     const videoElem = document.getElementById('video');
@@ -916,27 +989,50 @@
       else startScan();
     });
 
-    // Прямое скачивание TXT файла
+    // Нажатие на кнопку «Выгрузить файл» открывает окно выбора формата
     downloadBtn.addEventListener('click', () => {
       if (scannedCodes.length === 0) return;
+      formatBackdrop.style.display = 'flex';
+    });
 
-      const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
-      const fileContent = linesWithNumbers.join('\r\n');
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10);
-      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
-      const filename = `codes_${dateStr}_${timeStr}.txt`;
-
-      // Data URI гарантированно передает имя файла и тело в нативный DownloadListener
-      const encodedUri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(fileContent);
+    function downloadFile(content, filename, mimeType) {
+      const encodedUri = `data:${mimeType};charset=utf-8,` + encodeURIComponent(content);
       const link = document.createElement('a');
       link.setAttribute('href', encodedUri);
       link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-
       if (navigator.vibrate) navigator.vibrate(80);
+    }
+
+    function getTimestamp() {
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10);
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '-');
+      return `${dateStr}_${timeStr}`;
+    }
+
+    // 1. Выгрузка в формате TXT
+    btnExportTxt.addEventListener('click', () => {
+      formatBackdrop.style.display = 'none';
+      const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
+      const fileContent = linesWithNumbers.join('\r\n');
+      const filename = `codes_${getTimestamp()}.txt`;
+      downloadFile(fileContent, filename, 'text/plain');
+    });
+
+    // 2. Выгрузка в формате Excel (.CSV с BOM и заголовками колонок)
+    btnExportExcel.addEventListener('click', () => {
+      formatBackdrop.style.display = 'none';
+      // Заголовки таблицы: "№ п/п" и "Код маркировки" (разделитель точка с запятой для русского Excel)
+      let csvContent = '\uFEFF№ п/п;Код маркировки\r\n';
+      scannedCodes.forEach((code, index) => {
+        // Код маркировки обернут в кавычки для предотвращения искажений спецсимволов в ячейках
+        csvContent += `${index + 1};"${code.replace(/"/g, '""')}"\r\n`;
+      });
+      const filename = `codes_${getTimestamp()}.csv`;
+      downloadFile(csvContent, filename, 'text/csv');
     });
 
     updateUI();
