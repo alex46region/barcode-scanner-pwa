@@ -130,7 +130,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.05rem;
+      font-size: 1.1rem;
       cursor: pointer;
       transition: all 0.2s ease;
     }
@@ -139,16 +139,14 @@
       background: rgba(255, 255, 255, 0.2);
     }
 
-    /* Стилизация активной кнопки фонарика */
     #torch-btn {
       display: none;
     }
 
     #torch-btn.active {
-      background: rgba(245, 158, 11, 0.2);
-      border-color: #f59e0b;
-      color: #fbbf24;
-      box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+      background: rgba(245, 158, 11, 0.25) !important;
+      border-color: #f59e0b !important;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
     }
 
     #camera-container {
@@ -646,8 +644,8 @@
     </div>
     <div class="header-actions">
       <div class="counter-badge">Кодов: <span id="counter-val">0</span></div>
-      <!-- Кнопка фонарика в шапке (активируется при запуске камеры) -->
-      <div class="icon-btn" id="torch-btn" title="Включить фонарик">🔦</div>
+      <!-- Кнопка фонарика -->
+      <div class="icon-btn" id="torch-btn" title="Фонарик">🔦</div>
       <div class="icon-btn" id="settings-btn" title="Настройки">⚙️</div>
     </div>
   </header>
@@ -768,7 +766,6 @@
       navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch(console.error);
     }
 
-    // Настройки
     const settingsBtn = document.getElementById('settings-btn');
     const settingsBackdrop = document.getElementById('settings-modal-backdrop');
     const settingsCloseBtn = document.getElementById('settings-close-btn');
@@ -809,7 +806,6 @@
     optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
 
-    // Форматы
     const formatBackdrop = document.getElementById('format-modal-backdrop');
     const formatCloseBtn = document.getElementById('format-close-btn');
     const btnExportTxt = document.getElementById('btn-export-txt');
@@ -836,10 +832,11 @@
     let scannedCodes = [];
     let lastScannedCode = '';
     let lastScanTime = 0;
+    let mediaStream = null;
     let videoTrack = null;
     let isTorchOn = false;
 
-    // Управление фонариком
+    // Прямое управление фонариком
     async function toggleTorch() {
       if (!videoTrack) return;
       try {
@@ -852,9 +849,9 @@
         } else {
           torchBtn.classList.remove('active');
         }
-        if (navigator.vibrate) navigator.vibrate(60);
+        if (navigator.vibrate) navigator.vibrate(50);
       } catch (err) {
-        console.warn('Фонарик не поддерживается на данном устройстве:', err);
+        console.warn('Ошибка переключения фонарика:', err);
       }
     }
 
@@ -948,28 +945,29 @@
         toggleBtn.textContent = 'Остановить';
         toggleBtn.classList.add('active');
 
-        const hints = new Map();
-        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-
-        await codeReader.decodeFromVideoDevice(undefined, videoElem, (result, err) => {
-          if (!videoElem.classList.contains('active')) {
-            videoElem.classList.add('active');
-            placeholder.style.display = 'none';
-            laser.classList.add('active');
-
-            // Подключаем доступ к видеодорожке камеры для фонарика
-            if (videoElem.srcObject) {
-              const tracks = videoElem.srcObject.getVideoTracks();
-              if (tracks.length > 0) {
-                videoTrack = tracks[0];
-                const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
-                if (capabilities.torch) {
-                  torchBtn.style.display = 'flex';
-                }
-              }
-            }
+        // Прямой захват камеры для гарантированного доступа к фонарику
+        const constraints = {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
           }
+        };
 
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoElem.srcObject = mediaStream;
+        await videoElem.play();
+
+        videoTrack = mediaStream.getVideoTracks()[0];
+        
+        // Показываем кнопку фонарика сразу при старте камеры
+        torchBtn.style.display = 'flex';
+        videoElem.classList.add('active');
+        placeholder.style.display = 'none';
+        laser.classList.add('active');
+
+        // Сканирование кадров через ZXing
+        codeReader.decodeFromVideoElement(videoElem, (result, err) => {
           if (result) {
             const now = Date.now();
             const rawText = result.getText();
@@ -1018,6 +1016,7 @@
             }
           }
         });
+
       } catch (err) {
         resultBox.textContent = 'Ошибка камеры: ' + err.message;
         stopScan();
@@ -1026,9 +1025,18 @@
 
     function stopScan() {
       scanning = false;
-      if (isTorchOn) toggleTorch();
+      if (isTorchOn) {
+        toggleTorch();
+      }
       torchBtn.style.display = 'none';
+      torchBtn.classList.remove('active');
+
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
       videoTrack = null;
+
       codeReader.reset();
       videoElem.classList.remove('active');
       placeholder.style.display = 'flex';
@@ -1054,7 +1062,6 @@
       return `${dateStr}_${timeStr}`;
     }
 
-    // Экспорт в TXT
     btnExportTxt.addEventListener('click', () => {
       formatBackdrop.style.display = 'none';
       const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
@@ -1072,7 +1079,6 @@
       if (navigator.vibrate) navigator.vibrate(80);
     });
 
-    // Экспорт в XLSX
     btnExportExcel.addEventListener('click', () => {
       formatBackdrop.style.display = 'none';
 
