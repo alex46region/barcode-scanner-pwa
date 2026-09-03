@@ -102,7 +102,7 @@
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
 
     .counter-badge {
@@ -130,12 +130,25 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.15rem;
+      font-size: 1.05rem;
       cursor: pointer;
+      transition: all 0.2s ease;
     }
 
     .icon-btn:active {
       background: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Стилизация активной кнопки фонарика */
+    #torch-btn {
+      display: none;
+    }
+
+    #torch-btn.active {
+      background: rgba(245, 158, 11, 0.2);
+      border-color: #f59e0b;
+      color: #fbbf24;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
     }
 
     #camera-container {
@@ -562,7 +575,6 @@
     }
   </style>
   <script src="https://unpkg.com/@zxing/library@latest"></script>
-  <!-- SheetJS для создания реальных .xlsx файлов -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -575,7 +587,6 @@
     </div>
   </div>
 
-  <!-- Модальное окно выбора формата выгрузки -->
   <div id="format-modal-backdrop">
     <div class="format-modal">
       <div class="settings-title">
@@ -601,7 +612,6 @@
     </div>
   </div>
 
-  <!-- Меню настроек -->
   <div id="settings-modal-backdrop">
     <div class="settings-modal">
       <div class="settings-title">
@@ -636,6 +646,8 @@
     </div>
     <div class="header-actions">
       <div class="counter-badge">Кодов: <span id="counter-val">0</span></div>
+      <!-- Кнопка фонарика в шапке (активируется при запуске камеры) -->
+      <div class="icon-btn" id="torch-btn" title="Включить фонарик">🔦</div>
       <div class="icon-btn" id="settings-btn" title="Настройки">⚙️</div>
     </div>
   </header>
@@ -797,7 +809,7 @@
     optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
 
-    // Модалка выбора формата
+    // Форматы
     const formatBackdrop = document.getElementById('format-modal-backdrop');
     const formatCloseBtn = document.getElementById('format-close-btn');
     const btnExportTxt = document.getElementById('btn-export-txt');
@@ -812,6 +824,7 @@
     const videoElem = document.getElementById('video');
     const placeholder = document.getElementById('camera-placeholder');
     const laser = document.getElementById('laser');
+    const torchBtn = document.getElementById('torch-btn');
     const resultBox = document.getElementById('result-box');
     const toggleBtn = document.getElementById('toggle-btn');
     const downloadBtn = document.getElementById('download-btn');
@@ -823,6 +836,29 @@
     let scannedCodes = [];
     let lastScannedCode = '';
     let lastScanTime = 0;
+    let videoTrack = null;
+    let isTorchOn = false;
+
+    // Управление фонариком
+    async function toggleTorch() {
+      if (!videoTrack) return;
+      try {
+        isTorchOn = !isTorchOn;
+        await videoTrack.applyConstraints({
+          advanced: [{ torch: isTorchOn }]
+        });
+        if (isTorchOn) {
+          torchBtn.classList.add('active');
+        } else {
+          torchBtn.classList.remove('active');
+        }
+        if (navigator.vibrate) navigator.vibrate(60);
+      } catch (err) {
+        console.warn('Фонарик не поддерживается на данном устройстве:', err);
+      }
+    }
+
+    torchBtn.addEventListener('click', toggleTorch);
 
     function escapeHtml(text) {
       return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -920,6 +956,18 @@
             videoElem.classList.add('active');
             placeholder.style.display = 'none';
             laser.classList.add('active');
+
+            // Подключаем доступ к видеодорожке камеры для фонарика
+            if (videoElem.srcObject) {
+              const tracks = videoElem.srcObject.getVideoTracks();
+              if (tracks.length > 0) {
+                videoTrack = tracks[0];
+                const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+                if (capabilities.torch) {
+                  torchBtn.style.display = 'flex';
+                }
+              }
+            }
           }
 
           if (result) {
@@ -978,6 +1026,9 @@
 
     function stopScan() {
       scanning = false;
+      if (isTorchOn) toggleTorch();
+      torchBtn.style.display = 'none';
+      videoTrack = null;
       codeReader.reset();
       videoElem.classList.remove('active');
       placeholder.style.display = 'flex';
@@ -1003,7 +1054,7 @@
       return `${dateStr}_${timeStr}`;
     }
 
-    // 1. Выгрузка в формате TXT
+    // Экспорт в TXT
     btnExportTxt.addEventListener('click', () => {
       formatBackdrop.style.display = 'none';
       const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
@@ -1021,11 +1072,10 @@
       if (navigator.vibrate) navigator.vibrate(80);
     });
 
-    // 2. Выгрузка в настоящем бинарном формате Excel (.XLSX)
+    // Экспорт в XLSX
     btnExportExcel.addEventListener('click', () => {
       formatBackdrop.style.display = 'none';
 
-      // Формируем структуру данных
       const tableData = [
         ['№ п/п', 'Код маркировки']
       ];
@@ -1034,10 +1084,8 @@
         tableData.push([index + 1, String(code)]);
       });
 
-      // Создаем лист и книгу через SheetJS
       const ws = XLSX.utils.aoa_to_sheet(tableData);
 
-      // Принудительно задаем строковый тип для столбца B (Код маркировки), чтобы Excel не обрезал нули
       for (let r = 1; r < tableData.length; r++) {
         const cellRef = XLSX.utils.encode_cell({ r: r, c: 1 });
         if (ws[cellRef]) {
@@ -1045,7 +1093,6 @@
         }
       }
 
-      // Настройка автоширины колонок
       ws['!cols'] = [
         { wch: 10 },
         { wch: 45 }
@@ -1054,7 +1101,6 @@
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Маркировка');
 
-      // Генерируем бинарный Base64 для передачи в нативный WebView DownloadListener
       const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
       const filename = `codes_${getTimestamp()}.xlsx`;
 
