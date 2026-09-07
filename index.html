@@ -732,11 +732,15 @@
       showLiveToast(updatedVer);
     }
 
+    // Принудительный сброс кэша браузера и перезагрузка
     async function checkVersionUpdate() {
       try {
         const res = await fetch(`./version.json?t=${Date.now()}`, {
           cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache, no-store' }
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
         });
         if (res.ok) {
           const data = await res.json();
@@ -748,7 +752,24 @@
           } else if (localVersion !== remoteVersion) {
             localStorage.setItem('app_local_version', remoteVersion);
             sessionStorage.setItem('pwa_just_updated_ver', remoteVersion);
-            window.location.reload(true);
+
+            // Удаляем кэш браузера
+            if ('caches' in window) {
+              const cacheKeys = await caches.keys();
+              await Promise.all(cacheKeys.map(k => caches.delete(k)));
+            }
+
+            // Обновляем Service Worker
+            if ('serviceWorker' in navigator) {
+              const regs = await navigator.serviceWorker.getRegistrations();
+              for (let reg of regs) {
+                await reg.update();
+              }
+            }
+
+            // Перезагрузка с уникальным хэшем в URL для обхода дискового кэша
+            const cleanUrl = window.location.origin + window.location.pathname;
+            window.location.replace(`${cleanUrl}?v=${remoteVersion}&t=${Date.now()}`);
           }
         }
       } catch (e) {}
@@ -814,7 +835,6 @@
       if (e.target === formatBackdrop) formatBackdrop.style.display = 'none';
     });
 
-    // Инициализация непрерывного считывателя ZXing
     const hints = new Map();
     hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
     const codeReader = new ZXing.BrowserMultiFormatReader(hints);
@@ -837,7 +857,6 @@
     let videoTrack = null;
     let isTorchOn = false;
 
-    // Включение/выключение фонарика
     async function toggleTorch() {
       if (!videoTrack) return;
       try {
@@ -946,9 +965,7 @@
         toggleBtn.textContent = 'Остановить';
         toggleBtn.classList.add('active');
 
-        // Непрерывное сканирование видеопотока через ZXing
         await codeReader.decodeFromVideoDevice(undefined, videoElem, (result, err) => {
-          // При старте видеопотока активируем интерфейс и привязываем фонарик
           if (!videoElem.classList.contains('active')) {
             videoElem.classList.add('active');
             placeholder.style.display = 'none';
