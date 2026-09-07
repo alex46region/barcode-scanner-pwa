@@ -130,7 +130,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.1rem;
+      font-size: 1.05rem;
       cursor: pointer;
       transition: all 0.2s ease;
     }
@@ -439,7 +439,6 @@
       max-width: 75px; 
     }
 
-    /* Модальные окна */
     #settings-modal-backdrop, #format-modal-backdrop {
       position: fixed;
       inset: 0;
@@ -644,7 +643,6 @@
     </div>
     <div class="header-actions">
       <div class="counter-badge">Кодов: <span id="counter-val">0</span></div>
-      <!-- Кнопка фонарика -->
       <div class="icon-btn" id="torch-btn" title="Фонарик">🔦</div>
       <div class="icon-btn" id="settings-btn" title="Настройки">⚙️</div>
     </div>
@@ -816,7 +814,11 @@
       if (e.target === formatBackdrop) formatBackdrop.style.display = 'none';
     });
 
-    const codeReader = new ZXing.BrowserMultiFormatReader();
+    // Инициализация непрерывного считывателя ZXing
+    const hints = new Map();
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+    const codeReader = new ZXing.BrowserMultiFormatReader(hints);
+
     const videoElem = document.getElementById('video');
     const placeholder = document.getElementById('camera-placeholder');
     const laser = document.getElementById('laser');
@@ -832,11 +834,10 @@
     let scannedCodes = [];
     let lastScannedCode = '';
     let lastScanTime = 0;
-    let mediaStream = null;
     let videoTrack = null;
     let isTorchOn = false;
 
-    // Прямое управление фонариком
+    // Включение/выключение фонарика
     async function toggleTorch() {
       if (!videoTrack) return;
       try {
@@ -851,7 +852,7 @@
         }
         if (navigator.vibrate) navigator.vibrate(50);
       } catch (err) {
-        console.warn('Ошибка переключения фонарика:', err);
+        console.warn('Фонарик не поддерживается данным устройством:', err);
       }
     }
 
@@ -945,29 +946,23 @@
         toggleBtn.textContent = 'Остановить';
         toggleBtn.classList.add('active');
 
-        // Прямой захват камеры для гарантированного доступа к фонарику
-        const constraints = {
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+        // Непрерывное сканирование видеопотока через ZXing
+        await codeReader.decodeFromVideoDevice(undefined, videoElem, (result, err) => {
+          // При старте видеопотока активируем интерфейс и привязываем фонарик
+          if (!videoElem.classList.contains('active')) {
+            videoElem.classList.add('active');
+            placeholder.style.display = 'none';
+            laser.classList.add('active');
+            torchBtn.style.display = 'flex';
+
+            if (videoElem.srcObject) {
+              const tracks = videoElem.srcObject.getVideoTracks();
+              if (tracks.length > 0) {
+                videoTrack = tracks[0];
+              }
+            }
           }
-        };
 
-        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        videoElem.srcObject = mediaStream;
-        await videoElem.play();
-
-        videoTrack = mediaStream.getVideoTracks()[0];
-        
-        // Показываем кнопку фонарика сразу при старте камеры
-        torchBtn.style.display = 'flex';
-        videoElem.classList.add('active');
-        placeholder.style.display = 'none';
-        laser.classList.add('active');
-
-        // Сканирование кадров через ZXing
-        codeReader.decodeFromVideoElement(videoElem, (result, err) => {
           if (result) {
             const now = Date.now();
             const rawText = result.getText();
@@ -1030,11 +1025,6 @@
       }
       torchBtn.style.display = 'none';
       torchBtn.classList.remove('active');
-
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-      }
       videoTrack = null;
 
       codeReader.reset();
