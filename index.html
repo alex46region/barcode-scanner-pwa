@@ -625,7 +625,7 @@
         <input type="radio" name="scanMode" id="opt-gs1" value="gs1" checked>
         <div>
           <div class="radio-text-title">Только GS1 (Честный Знак)</div>
-          <div class="radio-text-desc">Турбо-режим DataMatrix (сканирует только маркировку).</div>
+          <div class="radio-text-desc">Фильтрует сторонние коды и отсекает криптохвост.</div>
         </div>
       </div>
 
@@ -633,7 +633,7 @@
         <input type="radio" name="scanMode" id="opt-all" value="all">
         <div>
           <div class="radio-text-title">Универсальный режим</div>
-          <div class="radio-text-desc">DataMatrix, QR, Code-128, EAN-13.</div>
+          <div class="radio-text-desc">Сканирует любые коды (EAN-13, QR, 128 и др.). Если код GS1 — отсекает хвост.</div>
         </div>
       </div>
     </div>
@@ -797,27 +797,9 @@
     const modeBadge = document.getElementById('mode-badge');
 
     let currentScanMode = localStorage.getItem('pwa_scan_mode') || 'gs1';
-    let codeReader = null;
 
-    function createOptimizedReader() {
-      if (codeReader) {
-        try { codeReader.reset(); } catch(e){}
-      }
-      const hints = new Map();
-      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-
-      if (currentScanMode === 'gs1') {
-        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.DATA_MATRIX]);
-      } else {
-        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-          ZXing.BarcodeFormat.DATA_MATRIX,
-          ZXing.BarcodeFormat.QR_CODE,
-          ZXing.BarcodeFormat.CODE_128,
-          ZXing.BarcodeFormat.EAN_13
-        ]);
-      }
-      codeReader = new ZXing.BrowserMultiFormatReader(hints);
-    }
+    // Создаем ридер ZXing по официальной спецификации
+    const codeReader = new ZXing.BrowserMultiFormatReader();
 
     function setScanMode(mode) {
       currentScanMode = mode;
@@ -835,14 +817,8 @@
         modeBadge.textContent = 'ALL';
         modeBadge.style.background = 'linear-gradient(135deg, #8b5cf6, #6d28d9)';
       }
-      createOptimizedReader();
-      if (scanning) {
-        stopScan();
-        startScan();
-      }
     }
 
-    createOptimizedReader();
     setScanMode(currentScanMode);
 
     settingsBtn.addEventListener('click', () => settingsBackdrop.style.display = 'flex');
@@ -895,7 +871,7 @@
         }
         if (navigator.vibrate) navigator.vibrate(50);
       } catch (err) {
-        console.warn('Фонарик не поддерживается данным устройством:', err);
+        console.warn('Фонарик не поддерживается на данном устройстве:', err);
       }
     }
 
@@ -988,13 +964,28 @@
         scanning = true;
         toggleBtn.textContent = 'Остановить';
         toggleBtn.classList.add('active');
+        resultBox.className = '';
+        resultBox.innerHTML = 'Подключение камеры...';
 
-        // Используем универсальный и безотказный запуск decodeFromVideoDevice
-        await codeReader.decodeFromVideoDevice(undefined, videoElem, (result, err) => {
-          if (!videoElem.classList.contains('active')) {
+        // 1. Получаем список доступных видеоустройств
+        const videoInputDevices = await codeReader.getVideoInputDevices();
+        
+        // 2. Ищем заднюю (основную) камеру
+        let selectedDeviceId = undefined;
+        if (videoInputDevices && videoInputDevices.length > 0) {
+          const backCamera = videoInputDevices.find(device => 
+            /back|rear|environment|задн/i.test(device.label)
+          );
+          selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[videoInputDevices.length - 1].deviceId;
+        }
+
+        // 3. Безопасный запуск видеопотока
+        await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, err) => {
+          if (!videoElem.classList.contains('active') && videoElem.videoWidth > 0) {
             videoElem.classList.add('active');
             placeholder.style.display = 'none';
             torchBtn.style.display = 'flex';
+            resultBox.innerHTML = 'Наведите камеру на код';
 
             if (videoElem.srcObject) {
               const tracks = videoElem.srcObject.getVideoTracks();
@@ -1054,7 +1045,8 @@
         });
 
       } catch (err) {
-        resultBox.textContent = 'Ошибка камеры: ' + err.message;
+        resultBox.className = 'invalid-alert';
+        resultBox.textContent = 'Ошибка камеры: ' + (err.message || err);
         stopScan();
       }
     }
@@ -1068,9 +1060,10 @@
       torchBtn.classList.remove('active');
       videoTrack = null;
 
-      if (codeReader) {
+      try {
         codeReader.reset();
-      }
+      } catch (e) {}
+
       videoElem.classList.remove('active');
       placeholder.style.display = 'flex';
       toggleBtn.textContent = 'Запустить сканер';
