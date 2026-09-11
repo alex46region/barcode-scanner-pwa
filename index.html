@@ -799,7 +799,6 @@
     let currentScanMode = localStorage.getItem('pwa_scan_mode') || 'gs1';
     let codeReader = null;
 
-    // Сверхбыстрая оптимизация: конфигурируем только нужные форматы
     function createOptimizedReader() {
       if (codeReader) {
         try { codeReader.reset(); } catch(e){}
@@ -808,10 +807,8 @@
       hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
       if (currentScanMode === 'gs1') {
-        // Ускорение в 3-5 раз: парсер ищет ТОЛЬКО DataMatrix
         hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.DATA_MATRIX]);
       } else {
-        // В универсальном режиме отсекаем 10 редких типов, оставляем только популярные складские
         hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
           ZXing.BarcodeFormat.DATA_MATRIX,
           ZXing.BarcodeFormat.QR_CODE,
@@ -992,19 +989,8 @@
         toggleBtn.textContent = 'Остановить';
         toggleBtn.classList.add('active');
 
-        // Оптимальные видео-ограничения для скорости: 720p, высокая частота кадров и непрерывный фокус
-        const constraints = {
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { min: 640, ideal: 1280, max: 1920 },
-            height: { min: 480, ideal: 720, max: 1080 },
-            frameRate: { ideal: 60, min: 30 },
-            focusMode: "continuous"
-          }
-        };
-
-        // Запуск сканирования через оптимизированный ZXing ридер
-        await codeReader.decodeFromConstraints(constraints, videoElem, (result, err) => {
+        // Используем универсальный и безотказный запуск decodeFromVideoDevice
+        await codeReader.decodeFromVideoDevice(undefined, videoElem, (result, err) => {
           if (!videoElem.classList.contains('active')) {
             videoElem.classList.add('active');
             placeholder.style.display = 'none';
@@ -1014,10 +1000,6 @@
               const tracks = videoElem.srcObject.getVideoTracks();
               if (tracks.length > 0) {
                 videoTrack = tracks[0];
-                // Пытаемся принудительно активировать непрерывный автофокус на Android
-                try {
-                  videoTrack.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
-                } catch(e){}
               }
             }
           }
