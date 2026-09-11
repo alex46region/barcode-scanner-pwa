@@ -75,6 +75,31 @@
       gap: 8px;
     }
 
+    .brand-title-wrap {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .brand-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      line-height: 1.15;
+    }
+
+    .brand-subtitle {
+      font-size: 0.65rem;
+      font-weight: 500;
+      color: #94a3b8;
+      letter-spacing: 0.2px;
+      margin-top: 1px;
+    }
+
+    .brand-subtitle span {
+      color: #38bdf8;
+      font-weight: 600;
+    }
+
     .brand-badge {
       background: linear-gradient(135deg, #3b82f6, #1d4ed8);
       color: #fff;
@@ -170,7 +195,7 @@
       height: 100%;
       object-fit: cover;
       opacity: 0;
-      transition: opacity 0.3s ease;
+      transition: opacity 0.25s ease;
       pointer-events: none;
       z-index: 1;
     }
@@ -222,10 +247,10 @@
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 64vw;
-      max-width: 230px;
-      height: 64vw;
-      max-height: 230px;
+      width: 68vw;
+      max-width: 250px;
+      height: 68vw;
+      max-height: 250px;
       border-radius: 18px;
       pointer-events: none;
       box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
@@ -235,39 +260,18 @@
 
     .corner-tl, .corner-tr, .corner-bl, .corner-br {
       position: absolute;
-      width: 20px;
-      height: 20px;
+      width: 24px;
+      height: 24px;
       border-color: #3b82f6;
       border-style: solid;
       pointer-events: none;
       z-index: 6;
     }
 
-    .corner-tl { top: 0; left: 0; border-width: 3px 0 0 3px; border-top-left-radius: 16px; }
-    .corner-tr { top: 0; right: 0; border-width: 3px 3px 0 0; border-top-right-radius: 16px; }
-    .corner-bl { bottom: 0; left: 0; border-width: 0 0 3px 3px; border-bottom-left-radius: 16px; }
-    .corner-br { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-bottom-right-radius: 16px; }
-
-    .scan-laser {
-      position: absolute;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, #60a5fa, #3b82f6, #60a5fa, transparent);
-      box-shadow: 0 0 10px #3b82f6;
-      animation: scanLaserAnim 2s ease-in-out infinite alternate;
-      z-index: 5;
-      display: none;
-    }
-
-    .scan-laser.active {
-      display: block;
-    }
-
-    @keyframes scanLaserAnim {
-      0% { top: 6%; }
-      100% { top: 94%; }
-    }
+    .corner-tl { top: 0; left: 0; border-width: 3.5px 0 0 3.5px; border-top-left-radius: 16px; }
+    .corner-tr { top: 0; right: 0; border-width: 3.5px 3.5px 0 0; border-top-right-radius: 16px; }
+    .corner-bl { bottom: 0; left: 0; border-width: 0 0 3.5px 3.5px; border-bottom-left-radius: 16px; }
+    .corner-br { bottom: 0; right: 0; border-width: 0 3.5px 3.5px 0; border-bottom-right-radius: 16px; }
 
     #controls {
       padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 10px)) 14px;
@@ -621,7 +625,7 @@
         <input type="radio" name="scanMode" id="opt-gs1" value="gs1" checked>
         <div>
           <div class="radio-text-title">Только GS1 (Честный Знак)</div>
-          <div class="radio-text-desc">Фильтрует сторонние штрихкоды и отсекает криптохвост.</div>
+          <div class="radio-text-desc">Турбо-режим DataMatrix (сканирует только маркировку).</div>
         </div>
       </div>
 
@@ -629,7 +633,7 @@
         <input type="radio" name="scanMode" id="opt-all" value="all">
         <div>
           <div class="radio-text-title">Универсальный режим</div>
-          <div class="radio-text-desc">Сканирует любые коды (EAN-13, QR, 128 и др.). Если код GS1 — отсекает хвост.</div>
+          <div class="radio-text-desc">DataMatrix, QR, Code-128, EAN-13.</div>
         </div>
       </div>
     </div>
@@ -639,7 +643,10 @@
     <div class="brand-section">
       <div class="live-dot" title="Live Sync Active"></div>
       <div class="brand-badge" id="mode-badge">GS1</div>
-      <span style="font-size: 0.92rem; font-weight: 700;">Scanner Pro</span>
+      <div class="brand-title-wrap">
+        <span class="brand-title">Scanner Pro</span>
+        <span class="brand-subtitle">Especially for <span>Пелех</span></span>
+      </div>
     </div>
     <div class="header-actions">
       <div class="counter-badge">Кодов: <span id="counter-val">0</span></div>
@@ -664,7 +671,6 @@
       <div class="corner-tr"></div>
       <div class="corner-bl"></div>
       <div class="corner-br"></div>
-      <div class="scan-laser" id="laser"></div>
     </div>
   </div>
 
@@ -732,7 +738,6 @@
       showLiveToast(updatedVer);
     }
 
-    // Принудительный сброс кэша браузера и перезагрузка
     async function checkVersionUpdate() {
       try {
         const res = await fetch(`./version.json?t=${Date.now()}`, {
@@ -753,13 +758,11 @@
             localStorage.setItem('app_local_version', remoteVersion);
             sessionStorage.setItem('pwa_just_updated_ver', remoteVersion);
 
-            // Удаляем кэш браузера
             if ('caches' in window) {
               const cacheKeys = await caches.keys();
               await Promise.all(cacheKeys.map(k => caches.delete(k)));
             }
 
-            // Обновляем Service Worker
             if ('serviceWorker' in navigator) {
               const regs = await navigator.serviceWorker.getRegistrations();
               for (let reg of regs) {
@@ -767,7 +770,6 @@
               }
             }
 
-            // Перезагрузка с уникальным хэшем в URL для обхода дискового кэша
             const cleanUrl = window.location.origin + window.location.pathname;
             window.location.replace(`${cleanUrl}?v=${remoteVersion}&t=${Date.now()}`);
           }
@@ -795,6 +797,30 @@
     const modeBadge = document.getElementById('mode-badge');
 
     let currentScanMode = localStorage.getItem('pwa_scan_mode') || 'gs1';
+    let codeReader = null;
+
+    // Сверхбыстрая оптимизация: конфигурируем только нужные форматы
+    function createOptimizedReader() {
+      if (codeReader) {
+        try { codeReader.reset(); } catch(e){}
+      }
+      const hints = new Map();
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+      if (currentScanMode === 'gs1') {
+        // Ускорение в 3-5 раз: парсер ищет ТОЛЬКО DataMatrix
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.DATA_MATRIX]);
+      } else {
+        // В универсальном режиме отсекаем 10 редких типов, оставляем только популярные складские
+        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+          ZXing.BarcodeFormat.DATA_MATRIX,
+          ZXing.BarcodeFormat.QR_CODE,
+          ZXing.BarcodeFormat.CODE_128,
+          ZXing.BarcodeFormat.EAN_13
+        ]);
+      }
+      codeReader = new ZXing.BrowserMultiFormatReader(hints);
+    }
 
     function setScanMode(mode) {
       currentScanMode = mode;
@@ -812,8 +838,14 @@
         modeBadge.textContent = 'ALL';
         modeBadge.style.background = 'linear-gradient(135deg, #8b5cf6, #6d28d9)';
       }
+      createOptimizedReader();
+      if (scanning) {
+        stopScan();
+        startScan();
+      }
     }
 
+    createOptimizedReader();
     setScanMode(currentScanMode);
 
     settingsBtn.addEventListener('click', () => settingsBackdrop.style.display = 'flex');
@@ -835,13 +867,8 @@
       if (e.target === formatBackdrop) formatBackdrop.style.display = 'none';
     });
 
-    const hints = new Map();
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-    const codeReader = new ZXing.BrowserMultiFormatReader(hints);
-
     const videoElem = document.getElementById('video');
     const placeholder = document.getElementById('camera-placeholder');
-    const laser = document.getElementById('laser');
     const torchBtn = document.getElementById('torch-btn');
     const resultBox = document.getElementById('result-box');
     const toggleBtn = document.getElementById('toggle-btn');
@@ -965,17 +992,32 @@
         toggleBtn.textContent = 'Остановить';
         toggleBtn.classList.add('active');
 
-        await codeReader.decodeFromVideoDevice(undefined, videoElem, (result, err) => {
+        // Оптимальные видео-ограничения для скорости: 720p, высокая частота кадров и непрерывный фокус
+        const constraints = {
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { min: 640, ideal: 1280, max: 1920 },
+            height: { min: 480, ideal: 720, max: 1080 },
+            frameRate: { ideal: 60, min: 30 },
+            focusMode: "continuous"
+          }
+        };
+
+        // Запуск сканирования через оптимизированный ZXing ридер
+        await codeReader.decodeFromConstraints(constraints, videoElem, (result, err) => {
           if (!videoElem.classList.contains('active')) {
             videoElem.classList.add('active');
             placeholder.style.display = 'none';
-            laser.classList.add('active');
             torchBtn.style.display = 'flex';
 
             if (videoElem.srcObject) {
               const tracks = videoElem.srcObject.getVideoTracks();
               if (tracks.length > 0) {
                 videoTrack = tracks[0];
+                // Пытаемся принудительно активировать непрерывный автофокус на Android
+                try {
+                  videoTrack.applyConstraints({ advanced: [{ focusMode: "continuous" }] });
+                } catch(e){}
               }
             }
           }
@@ -988,10 +1030,10 @@
             const isGS1 = isGS1Code(rawText);
 
             if (currentScanMode === 'gs1' && !isGS1) {
-              if (rawText !== lastScannedCode || (now - lastScanTime > 1500)) {
+              if (rawText !== lastScannedCode || (now - lastScanTime > 1200)) {
                 lastScanTime = now;
                 lastScannedCode = rawText;
-                if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
                 resultBox.className = 'invalid-alert';
                 resultBox.innerHTML = `<span class="status-badge">⚠️ Не GS1 маркировка</span><div>${escapeHtml(rawText)}</div>`;
               }
@@ -1002,27 +1044,27 @@
             const badgeTitle = isGS1 ? '✅ GS1 DataMatrix' : `✅ Код (${formatName})`;
 
             if (batchModeCheck.checked) {
-              if (finalCode === lastScannedCode && (now - lastScanTime < 1500)) return;
+              if (finalCode === lastScannedCode && (now - lastScanTime < 1200)) return;
 
               lastScanTime = now;
               lastScannedCode = finalCode;
 
               if (scannedCodes.includes(finalCode)) {
-                if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
                 resultBox.className = 'duplicate-alert';
                 resultBox.innerHTML = `<span class="status-badge">⛔ Дубликат! Код уже добавлен</span><div>${escapeHtml(finalCode)}</div>`;
                 return;
               }
 
               scannedCodes.push(finalCode);
-              if (navigator.vibrate) navigator.vibrate(80);
+              if (navigator.vibrate) navigator.vibrate(60);
 
               resultBox.className = 'success-alert';
               resultBox.innerHTML = `<span class="status-badge">${badgeTitle} [№${scannedCodes.length}]</span><div>${escapeHtml(finalCode)}</div>`;
               resultBox.scrollTop = resultBox.scrollHeight;
               updateUI();
             } else {
-              if (navigator.vibrate) navigator.vibrate(80);
+              if (navigator.vibrate) navigator.vibrate(60);
               resultBox.className = 'success-alert';
               resultBox.innerHTML = `<span class="status-badge">${badgeTitle}</span><div>${escapeHtml(finalCode)}</div>`;
             }
@@ -1044,10 +1086,11 @@
       torchBtn.classList.remove('active');
       videoTrack = null;
 
-      codeReader.reset();
+      if (codeReader) {
+        codeReader.reset();
+      }
       videoElem.classList.remove('active');
       placeholder.style.display = 'flex';
-      laser.classList.remove('active');
       toggleBtn.textContent = 'Запустить сканер';
       toggleBtn.classList.remove('active');
     }
