@@ -443,7 +443,6 @@
       max-width: 75px; 
     }
 
-    /* Модальные окна */
     #settings-modal-backdrop, #format-modal-backdrop, #confirm-modal-backdrop {
       position: fixed;
       inset: 0;
@@ -589,7 +588,7 @@
     </div>
   </div>
 
-  <!-- Красивое модальное окно подтверждения (вместо системного confirm) -->
+  <!-- Модальное окно подтверждения очистки -->
   <div id="confirm-modal-backdrop">
     <div class="confirm-modal">
       <div style="font-size: 1.2rem; text-align: center;">🗑️</div>
@@ -640,7 +639,7 @@
         <input type="radio" name="scanMode" id="opt-gs1" value="gs1" checked>
         <div>
           <div class="radio-text-title">Только GS1 (Честный Знак)</div>
-          <div class="radio-text-desc">Фильтрует сторонние коды и отсекает криптохвост.</div>
+          <div class="radio-text-desc">Аппаратное считывание DataMatrix без задержек.</div>
         </div>
       </div>
 
@@ -648,7 +647,7 @@
         <input type="radio" name="scanMode" id="opt-all" value="all">
         <div>
           <div class="radio-text-title">Универсальный режим</div>
-          <div class="radio-text-desc">Сканирует любые коды (EAN-13, QR, 128 и др.). Если код GS1 — отсекает хвост.</div>
+          <div class="radio-text-desc">DataMatrix, QR, Code-128, EAN-13.</div>
         </div>
       </div>
     </div>
@@ -713,9 +712,7 @@
   <script>
     function triggerUpdateVibration() {
       if (navigator.vibrate) {
-        try {
-          navigator.vibrate([100, 50, 100, 50, 150]);
-        } catch (e) {}
+        try { navigator.vibrate([100, 50, 100, 50, 150]); } catch (e) {}
       }
     }
 
@@ -726,7 +723,6 @@
         toastDesc.textContent = `Успешно установлена версия v${ver}`;
       }
       toast.style.display = 'flex';
-
       triggerUpdateVibration();
 
       const oneTimeTapHandler = () => {
@@ -812,7 +808,6 @@
     const modeBadge = document.getElementById('mode-badge');
 
     let currentScanMode = localStorage.getItem('pwa_scan_mode') || 'gs1';
-    const codeReader = new ZXing.BrowserMultiFormatReader();
 
     function setScanMode(mode) {
       currentScanMode = mode;
@@ -830,6 +825,7 @@
         modeBadge.textContent = 'ALL';
         modeBadge.style.background = 'linear-gradient(135deg, #8b5cf6, #6d28d9)';
       }
+      initBarcodeDetector();
     }
 
     setScanMode(currentScanMode);
@@ -853,7 +849,6 @@
       if (e.target === formatBackdrop) formatBackdrop.style.display = 'none';
     });
 
-    // Логика кастомного модального окна подтверждения
     const confirmBackdrop = document.getElementById('confirm-modal-backdrop');
     const confirmModalText = document.getElementById('confirm-modal-text');
     const confirmCancelBtn = document.getElementById('confirm-cancel-btn');
@@ -900,8 +895,34 @@
     let scannedCodes = [];
     let lastScannedCode = '';
     let lastScanTime = 0;
+    let mediaStream = null;
     let videoTrack = null;
     let isTorchOn = false;
+    let scanAnimationFrameId = null;
+
+    // Аппаратный BarcodeDetector
+    let nativeDetector = null;
+    let fallbackZxingReader = null;
+
+    function initBarcodeDetector() {
+      if ('BarcodeDetector' in window) {
+        try {
+          const formats = currentScanMode === 'gs1' 
+            ? ['data_matrix'] 
+            : ['data_matrix', 'qr_code', 'code_128', 'ean_13'];
+          nativeDetector = new BarcodeDetector({ formats: formats });
+        } catch (e) {
+          nativeDetector = null;
+        }
+      } else {
+        nativeDetector = null;
+      }
+
+      // Резервный ZXing Reader
+      if (!fallbackZxingReader) {
+        fallbackZxingReader = new ZXing.BrowserMultiFormatReader();
+      }
+    }
 
     async function toggleTorch() {
       if (!videoTrack) return;
@@ -917,7 +938,7 @@
         }
         if (navigator.vibrate) navigator.vibrate(50);
       } catch (err) {
-        console.warn('Фонарик не поддерживается на данном устройстве:', err);
+        console.warn('Фонарик не поддерживается:', err);
       }
     }
 
@@ -996,7 +1017,6 @@
       }
     });
 
-    // Очистка кодов через собственное аккуратное окно без браузерных ссылок
     clearBtn.addEventListener('click', () => {
       showCustomConfirm('Очистить все отсканированные коды?', () => {
         scannedCodes = [];
@@ -1008,86 +1028,143 @@
       });
     });
 
+    // Обработка распознанного кода
+    function handleBarcodeDetected(rawText, formatName) {
+      const now = Date.now();
+      const isGS1 = isGS1Code(rawText);
+
+      if (currentScanMode === 'gs1' && !isGS1) {
+        if (rawText !== lastScannedCode || (now - lastScanTime > 1200)) {
+          lastScanTime = now;
+          lastScannedCode = rawText;
+          if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+          resultBox.className = 'invalid-alert';
+          resultBox.innerHTML = `<span class="status-badge">⚠️ Не GS1 маркировка</span><div>${escapeHtml(rawText)}</div>`;
+        }
+        return;
+      }
+
+      const finalCode = isGS1 ? cleanGS1Crypto(rawText) : rawText.trim();
+      const badgeTitle = isGS1 ? '✅ GS1 DataMatrix' : `✅ Код (${formatName || 'BARCODE'})`;
+
+      if (batchModeCheck.checked) {
+        if (finalCode === lastScannedCode && (now - lastScanTime < 1200)) return;
+
+        lastScanTime = now;
+        lastScannedCode = finalCode;
+
+        if (scannedCodes.includes(finalCode)) {
+          if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
+          resultBox.className = 'duplicate-alert';
+          resultBox.innerHTML = `<span class="status-badge">⛔ Дубликат! Код уже добавлен</span><div>${escapeHtml(finalCode)}</div>`;
+          return;
+        }
+
+        scannedCodes.push(finalCode);
+        if (navigator.vibrate) navigator.vibrate(60);
+
+        resultBox.className = 'success-alert';
+        resultBox.innerHTML = `<span class="status-badge">${badgeTitle} [№${scannedCodes.length}]</span><div>${escapeHtml(finalCode)}</div>`;
+        resultBox.scrollTop = resultBox.scrollHeight;
+        updateUI();
+      } else {
+        if (navigator.vibrate) navigator.vibrate(60);
+        resultBox.className = 'success-alert';
+        resultBox.innerHTML = `<span class="status-badge">${badgeTitle}</span><div>${escapeHtml(finalCode)}</div>`;
+      }
+    }
+
+    // Ультра-быстрый цикл сканирования через аппаратный движок
+    async function startHardwareScanLoop() {
+      if (!scanning) return;
+
+      if (videoElem.readyState >= videoElem.HAVE_CURRENT_DATA) {
+        try {
+          if (nativeDetector) {
+            // Аппаратное распознавание на C++ уровне Android (5-15 мс)
+            const barcodes = await nativeDetector.detect(videoElem);
+            if (barcodes && barcodes.length > 0) {
+              handleBarcodeDetected(barcodes[0].rawValue, barcodes[0].format);
+            }
+          }
+        } catch (e) {}
+      }
+
+      if (scanning) {
+        scanAnimationFrameId = requestAnimationFrame(startHardwareScanLoop);
+      }
+    }
+
     async function startScan() {
       try {
         scanning = true;
         toggleBtn.textContent = 'Остановить';
         toggleBtn.classList.add('active');
         resultBox.className = '';
-        resultBox.innerHTML = 'Подключение камеры...';
+        resultBox.innerHTML = 'Запуск камеры...';
 
-        const videoInputDevices = await codeReader.getVideoInputDevices();
-        let selectedDeviceId = undefined;
-        if (videoInputDevices && videoInputDevices.length > 0) {
-          const backCamera = videoInputDevices.find(device => 
-            /back|rear|environment|задн/i.test(device.label)
-          );
-          selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[videoInputDevices.length - 1].deviceId;
+        // 1. Запрашиваем камеру в максимальном качестве без фронталки
+        const streamConstraints = {
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 }
+          }
+        };
+
+        mediaStream = await navigator.mediaDevices.getUserMedia(streamConstraints);
+        videoElem.srcObject = mediaStream;
+        await videoElem.play();
+
+        videoTrack = mediaStream.getVideoTracks()[0];
+        
+        // 2. Включаем аппаратный автофокус и макро-зум для дальности
+        if (videoTrack && videoTrack.getCapabilities) {
+          const caps = videoTrack.getCapabilities();
+          const advancedConstraints = {};
+
+          // Непрерывный автофокус
+          if (caps.focusMode && caps.focusMode.includes('continuous')) {
+            advancedConstraints.focusMode = 'continuous';
+          }
+
+          // Аппаратный зум (приближаем в 1.7x - 2.0x, чтобы мелкий DataMatrix был гигантским для сенсора)
+          if (caps.zoom) {
+            const targetZoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 1.8));
+            advancedConstraints.zoom = targetZoom;
+          }
+
+          if (Object.keys(advancedConstraints).length > 0) {
+            try {
+              await videoTrack.applyConstraints({ advanced: [advancedConstraints] });
+            } catch (e) {}
+          }
+
+          // Показываем кнопку фонарика, если поддерживается
+          if (caps.torch) {
+            torchBtn.style.display = 'flex';
+          }
+        } else {
+          torchBtn.style.display = 'flex';
         }
 
-        await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, err) => {
-          if (!videoElem.classList.contains('active') && videoElem.videoWidth > 0) {
-            videoElem.classList.add('active');
-            placeholder.style.display = 'none';
-            torchBtn.style.display = 'flex';
-            resultBox.innerHTML = 'Наведите камеру на код';
+        videoElem.classList.add('active');
+        placeholder.style.display = 'none';
+        resultBox.innerHTML = 'Наведите камеру на код';
 
-            if (videoElem.srcObject) {
-              const tracks = videoElem.srcObject.getVideoTracks();
-              if (tracks.length > 0) {
-                videoTrack = tracks[0];
-              }
+        // 3. Запуск сканера
+        if (nativeDetector) {
+          // Аппаратный режим Android
+          startHardwareScanLoop();
+        } else {
+          // Резервный режим через ZXing
+          fallbackZxingReader.decodeFromVideoElement(videoElem, (res, err) => {
+            if (res) {
+              handleBarcodeDetected(res.getText(), res.getBarcodeFormat());
             }
-          }
-
-          if (result) {
-            const now = Date.now();
-            const rawText = result.getText();
-            const formatName = result.getBarcodeFormat() !== undefined ? result.getBarcodeFormat() : 'BARCODE';
-
-            const isGS1 = isGS1Code(rawText);
-
-            if (currentScanMode === 'gs1' && !isGS1) {
-              if (rawText !== lastScannedCode || (now - lastScanTime > 1200)) {
-                lastScanTime = now;
-                lastScannedCode = rawText;
-                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-                resultBox.className = 'invalid-alert';
-                resultBox.innerHTML = `<span class="status-badge">⚠️ Не GS1 маркировка</span><div>${escapeHtml(rawText)}</div>`;
-              }
-              return;
-            }
-
-            const finalCode = isGS1 ? cleanGS1Crypto(rawText) : rawText.trim();
-            const badgeTitle = isGS1 ? '✅ GS1 DataMatrix' : `✅ Код (${formatName})`;
-
-            if (batchModeCheck.checked) {
-              if (finalCode === lastScannedCode && (now - lastScanTime < 1200)) return;
-
-              lastScanTime = now;
-              lastScannedCode = finalCode;
-
-              if (scannedCodes.includes(finalCode)) {
-                if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
-                resultBox.className = 'duplicate-alert';
-                resultBox.innerHTML = `<span class="status-badge">⛔ Дубликат! Код уже добавлен</span><div>${escapeHtml(finalCode)}</div>`;
-                return;
-              }
-
-              scannedCodes.push(finalCode);
-              if (navigator.vibrate) navigator.vibrate(60);
-
-              resultBox.className = 'success-alert';
-              resultBox.innerHTML = `<span class="status-badge">${badgeTitle} [№${scannedCodes.length}]</span><div>${escapeHtml(finalCode)}</div>`;
-              resultBox.scrollTop = resultBox.scrollHeight;
-              updateUI();
-            } else {
-              if (navigator.vibrate) navigator.vibrate(60);
-              resultBox.className = 'success-alert';
-              resultBox.innerHTML = `<span class="status-badge">${badgeTitle}</span><div>${escapeHtml(finalCode)}</div>`;
-            }
-          }
-        });
+          });
+        }
 
       } catch (err) {
         resultBox.className = 'invalid-alert';
@@ -1098,16 +1175,26 @@
 
     function stopScan() {
       scanning = false;
+      if (scanAnimationFrameId) {
+        cancelAnimationFrame(scanAnimationFrameId);
+        scanAnimationFrameId = null;
+      }
+
       if (isTorchOn) {
         toggleTorch();
       }
       torchBtn.style.display = 'none';
       torchBtn.classList.remove('active');
+
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
       videoTrack = null;
 
-      try {
-        codeReader.reset();
-      } catch (e) {}
+      if (fallbackZxingReader) {
+        try { fallbackZxingReader.reset(); } catch (e) {}
+      }
 
       videoElem.classList.remove('active');
       placeholder.style.display = 'flex';
