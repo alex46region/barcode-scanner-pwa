@@ -588,7 +588,6 @@
     </div>
   </div>
 
-  <!-- Модальное окно подтверждения очистки -->
   <div id="confirm-modal-backdrop">
     <div class="confirm-modal">
       <div style="font-size: 1.2rem; text-align: center;">🗑️</div>
@@ -639,7 +638,7 @@
         <input type="radio" name="scanMode" id="opt-gs1" value="gs1" checked>
         <div>
           <div class="radio-text-title">Только GS1 (Честный Знак)</div>
-          <div class="radio-text-desc">Аппаратное считывание DataMatrix без задержек.</div>
+          <div class="radio-text-desc">Фильтрует сторонние коды и отсекает криптохвост.</div>
         </div>
       </div>
 
@@ -647,7 +646,7 @@
         <input type="radio" name="scanMode" id="opt-all" value="all">
         <div>
           <div class="radio-text-title">Универсальный режим</div>
-          <div class="radio-text-desc">DataMatrix, QR, Code-128, EAN-13.</div>
+          <div class="radio-text-desc">Сканирует любые коды (EAN-13, QR, 128 и др.). Если код GS1 — отсекает хвост.</div>
         </div>
       </div>
     </div>
@@ -808,6 +807,22 @@
     const modeBadge = document.getElementById('mode-badge');
 
     let currentScanMode = localStorage.getItem('pwa_scan_mode') || 'gs1';
+    let nativeDetector = null;
+
+    function initBarcodeDetector() {
+      if ('BarcodeDetector' in window) {
+        try {
+          const formats = currentScanMode === 'gs1'
+            ? ['data_matrix']
+            : ['data_matrix', 'qr_code', 'code_128', 'ean_13'];
+          nativeDetector = new BarcodeDetector({ formats: formats });
+        } catch (e) {
+          nativeDetector = null;
+        }
+      } else {
+        nativeDetector = null;
+      }
+    }
 
     function setScanMode(mode) {
       currentScanMode = mode;
@@ -881,6 +896,7 @@
       }
     });
 
+    const codeReader = new ZXing.BrowserMultiFormatReader();
     const videoElem = document.getElementById('video');
     const placeholder = document.getElementById('camera-placeholder');
     const torchBtn = document.getElementById('torch-btn');
@@ -895,34 +911,9 @@
     let scannedCodes = [];
     let lastScannedCode = '';
     let lastScanTime = 0;
-    let mediaStream = null;
     let videoTrack = null;
     let isTorchOn = false;
-    let scanAnimationFrameId = null;
-
-    // Аппаратный BarcodeDetector
-    let nativeDetector = null;
-    let fallbackZxingReader = null;
-
-    function initBarcodeDetector() {
-      if ('BarcodeDetector' in window) {
-        try {
-          const formats = currentScanMode === 'gs1' 
-            ? ['data_matrix'] 
-            : ['data_matrix', 'qr_code', 'code_128', 'ean_13'];
-          nativeDetector = new BarcodeDetector({ formats: formats });
-        } catch (e) {
-          nativeDetector = null;
-        }
-      } else {
-        nativeDetector = null;
-      }
-
-      // Резервный ZXing Reader
-      if (!fallbackZxingReader) {
-        fallbackZxingReader = new ZXing.BrowserMultiFormatReader();
-      }
-    }
+    let hardwareLoopActive = false;
 
     async function toggleTorch() {
       if (!videoTrack) return;
@@ -1028,8 +1019,8 @@
       });
     });
 
-    // Обработка распознанного кода
-    function handleBarcodeDetected(rawText, formatName) {
+    function processFoundBarcode(rawText, formatName) {
+      if (!rawText) return;
       const now = Date.now();
       const isGS1 = isGS1Code(rawText);
 
@@ -1074,24 +1065,21 @@
       }
     }
 
-    // Ультра-быстрый цикл сканирования через аппаратный движок
-    async function startHardwareScanLoop() {
-      if (!scanning) return;
+    // Аппаратный фоновый цикл нативного распознавания
+    async function runHardwareDetectionLoop() {
+      if (!scanning || !hardwareLoopActive) return;
 
-      if (videoElem.readyState >= videoElem.HAVE_CURRENT_DATA) {
+      if (nativeDetector && videoElem.readyState >= videoElem.HAVE_CURRENT_DATA) {
         try {
-          if (nativeDetector) {
-            // Аппаратное распознавание на C++ уровне Android (5-15 мс)
-            const barcodes = await nativeDetector.detect(videoElem);
-            if (barcodes && barcodes.length > 0) {
-              handleBarcodeDetected(barcodes[0].rawValue, barcodes[0].format);
-            }
+          const barcodes = await nativeDetector.detect(videoElem);
+          if (barcodes && barcodes.length > 0) {
+            processFoundBarcode(barcodes[0].rawValue, barcodes[0].format);
           }
         } catch (e) {}
       }
 
-      if (scanning) {
-        scanAnimationFrameId = requestAnimationFrame(startHardwareScanLoop);
+      if (scanning && hardwareLoopActive) {
+        requestAnimationFrame(runHardwareDetectionLoop);
       }
     }
 
@@ -1101,70 +1089,49 @@
         toggleBtn.textContent = 'Остановить';
         toggleBtn.classList.add('active');
         resultBox.className = '';
-        resultBox.innerHTML = 'Запуск камеры...';
+        resultBox.innerHTML = 'Подключение камеры...';
 
-        // 1. Запрашиваем камеру в максимальном качестве без фронталки
-        const streamConstraints = {
-          audio: false,
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920, min: 1280 },
-            height: { ideal: 1080, min: 720 }
+        // 1. Получаем список камер и выбираем заднюю
+        let selectedDeviceId = undefined;
+        try {
+          const devices = await codeReader.getVideoInputDevices();
+          if (devices && devices.length > 0) {
+            const backCam = devices.find(d => /back|rear|environment|задн/i.test(d.label));
+            selectedDeviceId = backCam ? backCam.deviceId : devices[devices.length - 1].deviceId;
           }
-        };
+        } catch (e) {}
 
-        mediaStream = await navigator.mediaDevices.getUserMedia(streamConstraints);
-        videoElem.srcObject = mediaStream;
-        await videoElem.play();
-
-        videoTrack = mediaStream.getVideoTracks()[0];
-        
-        // 2. Включаем аппаратный автофокус и макро-зум для дальности
-        if (videoTrack && videoTrack.getCapabilities) {
-          const caps = videoTrack.getCapabilities();
-          const advancedConstraints = {};
-
-          // Непрерывный автофокус
-          if (caps.focusMode && caps.focusMode.includes('continuous')) {
-            advancedConstraints.focusMode = 'continuous';
-          }
-
-          // Аппаратный зум (приближаем в 1.7x - 2.0x, чтобы мелкий DataMatrix был гигантским для сенсора)
-          if (caps.zoom) {
-            const targetZoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 1.8));
-            advancedConstraints.zoom = targetZoom;
-          }
-
-          if (Object.keys(advancedConstraints).length > 0) {
-            try {
-              await videoTrack.applyConstraints({ advanced: [advancedConstraints] });
-            } catch (e) {}
-          }
-
-          // Показываем кнопку фонарика, если поддерживается
-          if (caps.torch) {
+        // 2. Безопасный запуск видеопотока через ZXing
+        await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, err) => {
+          if (!videoElem.classList.contains('active') && videoElem.videoWidth > 0) {
+            videoElem.classList.add('active');
+            placeholder.style.display = 'none';
             torchBtn.style.display = 'flex';
-          }
-        } else {
-          torchBtn.style.display = 'flex';
-        }
+            resultBox.innerHTML = 'Наведите камеру на код';
 
-        videoElem.classList.add('active');
-        placeholder.style.display = 'none';
-        resultBox.innerHTML = 'Наведите камеру на код';
-
-        // 3. Запуск сканера
-        if (nativeDetector) {
-          // Аппаратный режим Android
-          startHardwareScanLoop();
-        } else {
-          // Резервный режим через ZXing
-          fallbackZxingReader.decodeFromVideoElement(videoElem, (res, err) => {
-            if (res) {
-              handleBarcodeDetected(res.getText(), res.getBarcodeFormat());
+            if (videoElem.srcObject) {
+              const tracks = videoElem.srcObject.getVideoTracks();
+              if (tracks.length > 0) {
+                videoTrack = tracks[0];
+                
+                // Пробуем мягко включить автофокус без фатальных ошибок
+                try {
+                  videoTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                } catch(e) {}
+              }
             }
-          });
-        }
+
+            // Если аппаратный BarcodeDetector доступен, запускаем его параллельно
+            if (nativeDetector && !hardwareLoopActive) {
+              hardwareLoopActive = true;
+              runHardwareDetectionLoop();
+            }
+          }
+
+          if (result) {
+            processFoundBarcode(result.getText(), result.getBarcodeFormat());
+          }
+        });
 
       } catch (err) {
         resultBox.className = 'invalid-alert';
@@ -1175,26 +1142,18 @@
 
     function stopScan() {
       scanning = false;
-      if (scanAnimationFrameId) {
-        cancelAnimationFrame(scanAnimationFrameId);
-        scanAnimationFrameId = null;
-      }
+      hardwareLoopActive = false;
 
       if (isTorchOn) {
         toggleTorch();
       }
       torchBtn.style.display = 'none';
       torchBtn.classList.remove('active');
-
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-      }
       videoTrack = null;
 
-      if (fallbackZxingReader) {
-        try { fallbackZxingReader.reset(); } catch (e) {}
-      }
+      try {
+        codeReader.reset();
+      } catch (e) {}
 
       videoElem.classList.remove('active');
       placeholder.style.display = 'flex';
