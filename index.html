@@ -443,7 +443,8 @@
       max-width: 75px; 
     }
 
-    #settings-modal-backdrop, #format-modal-backdrop {
+    /* Модальные окна */
+    #settings-modal-backdrop, #format-modal-backdrop, #confirm-modal-backdrop {
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.7);
@@ -456,7 +457,7 @@
       padding: 16px;
     }
 
-    .settings-modal, .format-modal {
+    .settings-modal, .format-modal, .confirm-modal {
       background: #161b22;
       border: 1px solid var(--card-border);
       border-radius: 18px;
@@ -585,6 +586,20 @@
     <div>
       <div style="font-size: 0.82rem; font-weight: 700;" id="toast-title">Обновление применено!</div>
       <div style="font-size: 0.72rem; color: rgba(255,255,255,0.85);" id="toast-desc">Загружена актуальная версия</div>
+    </div>
+  </div>
+
+  <!-- Красивое модальное окно подтверждения (вместо системного confirm) -->
+  <div id="confirm-modal-backdrop">
+    <div class="confirm-modal">
+      <div style="font-size: 1.2rem; text-align: center;">🗑️</div>
+      <div id="confirm-modal-text" style="font-size: 0.92rem; font-weight: 600; text-align: center; line-height: 1.4; color: #f3f4f6;">
+        Очистить все отсканированные коды?
+      </div>
+      <div style="display: flex; gap: 10px; margin-top: 6px;">
+        <button id="confirm-cancel-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid var(--card-border); color: #e5e7eb;">Отмена</button>
+        <button id="confirm-ok-btn" style="background: linear-gradient(135deg, #ef4444, #dc2626);">Очистить</button>
+      </div>
     </div>
   </div>
 
@@ -797,8 +812,6 @@
     const modeBadge = document.getElementById('mode-badge');
 
     let currentScanMode = localStorage.getItem('pwa_scan_mode') || 'gs1';
-
-    // Создаем ридер ZXing по официальной спецификации
     const codeReader = new ZXing.BrowserMultiFormatReader();
 
     function setScanMode(mode) {
@@ -838,6 +851,39 @@
     formatCloseBtn.addEventListener('click', () => formatBackdrop.style.display = 'none');
     formatBackdrop.addEventListener('click', (e) => {
       if (e.target === formatBackdrop) formatBackdrop.style.display = 'none';
+    });
+
+    // Логика кастомного модального окна подтверждения
+    const confirmBackdrop = document.getElementById('confirm-modal-backdrop');
+    const confirmModalText = document.getElementById('confirm-modal-text');
+    const confirmCancelBtn = document.getElementById('confirm-cancel-btn');
+    const confirmOkBtn = document.getElementById('confirm-ok-btn');
+    let onConfirmAction = null;
+
+    function showCustomConfirm(message, onConfirm) {
+      confirmModalText.textContent = message;
+      onConfirmAction = onConfirm;
+      confirmBackdrop.style.display = 'flex';
+    }
+
+    confirmCancelBtn.addEventListener('click', () => {
+      confirmBackdrop.style.display = 'none';
+      onConfirmAction = null;
+    });
+
+    confirmOkBtn.addEventListener('click', () => {
+      confirmBackdrop.style.display = 'none';
+      if (typeof onConfirmAction === 'function') {
+        onConfirmAction();
+      }
+      onConfirmAction = null;
+    });
+
+    confirmBackdrop.addEventListener('click', (e) => {
+      if (e.target === confirmBackdrop) {
+        confirmBackdrop.style.display = 'none';
+        onConfirmAction = null;
+      }
     });
 
     const videoElem = document.getElementById('video');
@@ -937,26 +983,29 @@
 
     batchModeCheck.addEventListener('change', () => {
       if (!batchModeCheck.checked && scannedCodes.length > 0) {
-        if (!confirm('Выключение накопительного режима сбросит текущие коды. Продолжить?')) {
-          batchModeCheck.checked = true;
-          return;
-        }
-        scannedCodes = [];
-        lastScannedCode = '';
-        resultBox.className = '';
-        resultBox.innerHTML = 'Нажмите «Запустить сканер» для начала работы';
+        showCustomConfirm('Выключение накопительного режима сбросит текущие коды. Продолжить?', () => {
+          scannedCodes = [];
+          lastScannedCode = '';
+          resultBox.className = '';
+          resultBox.innerHTML = 'Нажмите «Запустить сканер» для начала работы';
+          updateUI();
+        });
+        batchModeCheck.checked = true;
+      } else {
+        updateUI();
       }
-      updateUI();
     });
 
+    // Очистка кодов через собственное аккуратное окно без браузерных ссылок
     clearBtn.addEventListener('click', () => {
-      if (confirm('Очистить все отсканированные коды?')) {
+      showCustomConfirm('Очистить все отсканированные коды?', () => {
         scannedCodes = [];
         lastScannedCode = '';
         resultBox.className = '';
         resultBox.innerHTML = 'Список очищен. Готов к сканированию.';
         updateUI();
-      }
+        if (navigator.vibrate) navigator.vibrate(50);
+      });
     });
 
     async function startScan() {
@@ -967,10 +1016,7 @@
         resultBox.className = '';
         resultBox.innerHTML = 'Подключение камеры...';
 
-        // 1. Получаем список доступных видеоустройств
         const videoInputDevices = await codeReader.getVideoInputDevices();
-        
-        // 2. Ищем заднюю (основную) камеру
         let selectedDeviceId = undefined;
         if (videoInputDevices && videoInputDevices.length > 0) {
           const backCamera = videoInputDevices.find(device => 
@@ -979,7 +1025,6 @@
           selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[videoInputDevices.length - 1].deviceId;
         }
 
-        // 3. Безопасный запуск видеопотока
         await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, err) => {
           if (!videoElem.classList.contains('active') && videoElem.videoWidth > 0) {
             videoElem.classList.add('active');
