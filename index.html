@@ -195,9 +195,10 @@
       height: 100%;
       object-fit: cover;
       opacity: 0;
-      transition: opacity 0.25s ease;
+      transition: opacity 0.25s ease, transform 0.2s ease;
       pointer-events: none;
       z-index: 1;
+      transform-origin: center center;
     }
 
     video.active {
@@ -272,6 +273,57 @@
     .corner-tr { top: 0; right: 0; border-width: 3.5px 3.5px 0 0; border-top-right-radius: 16px; }
     .corner-bl { bottom: 0; left: 0; border-width: 0 0 3.5px 3.5px; border-bottom-left-radius: 16px; }
     .corner-br { bottom: 0; right: 0; border-width: 0 3.5px 3.5px 0; border-bottom-right-radius: 16px; }
+
+    /* Панель зума */
+    .zoom-controls {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      background: rgba(13, 17, 23, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--card-border);
+      padding: 6px;
+      border-radius: 30px;
+      z-index: 10;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .zoom-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--card-border);
+      color: #f3f4f6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      padding: 0;
+    }
+
+    .zoom-btn:active {
+      transform: scale(0.9);
+      background: rgba(37, 99, 235, 0.4);
+      border-color: #3b82f6;
+    }
+
+    .zoom-label {
+      font-size: 0.68rem;
+      font-weight: 700;
+      color: #93c5fd;
+      font-family: ui-monospace, Menlo, monospace;
+      user-select: none;
+    }
 
     #controls {
       padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 10px)) 14px;
@@ -685,6 +737,13 @@
       <div class="corner-bl"></div>
       <div class="corner-br"></div>
     </div>
+
+    <!-- Аккуратные плавающие кнопки управления зумом -->
+    <div class="zoom-controls" id="zoom-controls">
+      <button class="zoom-btn" id="zoom-in-btn" title="Приблизить">+</button>
+      <span class="zoom-label" id="zoom-val-label">1.0x</span>
+      <button class="zoom-btn" id="zoom-out-btn" title="Отдалить">−</button>
+    </div>
   </div>
 
   <div id="controls">
@@ -907,6 +966,12 @@
     const batchModeCheck = document.getElementById('batch-mode');
     const counterVal = document.getElementById('counter-val');
 
+    // Элементы зума
+    const zoomControls = document.getElementById('zoom-controls');
+    const zoomInBtn = document.getElementById('zoom-in-btn');
+    const zoomOutBtn = document.getElementById('zoom-out-btn');
+    const zoomValLabel = document.getElementById('zoom-val-label');
+
     let scanning = false;
     let scannedCodes = [];
     let lastScannedCode = '';
@@ -914,6 +979,36 @@
     let videoTrack = null;
     let isTorchOn = false;
     let hardwareLoopActive = false;
+
+    // Параметры зума
+    let currentZoom = 1.0;
+    let minZoom = 1.0;
+    let maxZoom = 4.0;
+    let zoomStep = 0.5;
+    let hasHardwareZoom = false;
+
+    async function applyZoom(val) {
+      currentZoom = Math.min(maxZoom, Math.max(minZoom, val));
+      zoomValLabel.textContent = `${currentZoom.toFixed(1)}x`;
+
+      // 1. Аппаратный зум камеры (нативно через драйвер сенсора)
+      if (hasHardwareZoom && videoTrack) {
+        try {
+          await videoTrack.applyConstraints({ advanced: [{ zoom: currentZoom }] });
+        } catch (e) {
+          // Если аппаратный зум дал сбой, переходим на плавный CSS зум
+          videoElem.style.transform = `scale(${currentZoom})`;
+        }
+      } else {
+        // 2. Программный зум (масштабирование видео)
+        videoElem.style.transform = `scale(${currentZoom})`;
+      }
+
+      if (navigator.vibrate) navigator.vibrate(30);
+    }
+
+    zoomInBtn.addEventListener('click', () => applyZoom(currentZoom + zoomStep));
+    zoomOutBtn.addEventListener('click', () => applyZoom(currentZoom - zoomStep));
 
     async function toggleTorch() {
       if (!videoTrack) return;
@@ -1065,7 +1160,6 @@
       }
     }
 
-    // Аппаратный фоновый цикл нативного распознавания
     async function runHardwareDetectionLoop() {
       if (!scanning || !hardwareLoopActive) return;
 
@@ -1091,7 +1185,6 @@
         resultBox.className = '';
         resultBox.innerHTML = 'Подключение камеры...';
 
-        // 1. Получаем список камер и выбираем заднюю
         let selectedDeviceId = undefined;
         try {
           const devices = await codeReader.getVideoInputDevices();
@@ -1101,12 +1194,12 @@
           }
         } catch (e) {}
 
-        // 2. Безопасный запуск видеопотока через ZXing
         await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, err) => {
           if (!videoElem.classList.contains('active') && videoElem.videoWidth > 0) {
             videoElem.classList.add('active');
             placeholder.style.display = 'none';
             torchBtn.style.display = 'flex';
+            zoomControls.style.display = 'flex';
             resultBox.innerHTML = 'Наведите камеру на код';
 
             if (videoElem.srcObject) {
@@ -1114,14 +1207,29 @@
               if (tracks.length > 0) {
                 videoTrack = tracks[0];
                 
-                // Пробуем мягко включить автофокус без фатальных ошибок
                 try {
                   videoTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
                 } catch(e) {}
+
+                // Определяем аппаратные возможности зума сенсора
+                if (videoTrack.getCapabilities) {
+                  const caps = videoTrack.getCapabilities();
+                  if (caps.zoom) {
+                    hasHardwareZoom = true;
+                    minZoom = caps.zoom.min || 1.0;
+                    maxZoom = caps.zoom.max || 4.0;
+                    zoomStep = (caps.zoom.step || 0.1) * 3;
+                    if (zoomStep < 0.2) zoomStep = 0.5;
+                  } else {
+                    hasHardwareZoom = false;
+                    minZoom = 1.0;
+                    maxZoom = 3.5;
+                    zoomStep = 0.5;
+                  }
+                }
               }
             }
 
-            // Если аппаратный BarcodeDetector доступен, запускаем его параллельно
             if (nativeDetector && !hardwareLoopActive) {
               hardwareLoopActive = true;
               runHardwareDetectionLoop();
@@ -1149,6 +1257,10 @@
       }
       torchBtn.style.display = 'none';
       torchBtn.classList.remove('active');
+      zoomControls.style.display = 'none';
+      videoElem.style.transform = 'scale(1)';
+      currentZoom = 1.0;
+      zoomValLabel.textContent = '1.0x';
       videoTrack = null;
 
       try {
