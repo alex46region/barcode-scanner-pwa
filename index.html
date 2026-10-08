@@ -909,9 +909,6 @@
 
     checkVersionUpdate();
     setInterval(checkVersionUpdate, 20000);
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') checkVersionUpdate();
-    });
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch(console.error);
@@ -1048,10 +1045,11 @@
     let scannedCodes = [];
     let lastScannedCode = '';
     let lastScanTime = 0;
+    let currentStream = null;
     let videoTrack = null;
     let hardwareLoopActive = false;
+    let isRestartingCamera = false;
 
-    // Параметры зума
     let currentZoom = 1.0;
     let minZoom = 1.0;
     let maxZoom = 4.0;
@@ -1079,7 +1077,7 @@
     zoomOutBtn.addEventListener('click', () => applyZoom(currentZoom - zoomStep));
 
     // =========================================================================
-    // УНИВЕРСАЛЬНЫЙ МОДУЛЬ УПРАВЛЕНИЯ ФОНАРИКОМ
+    // НАДЁЖНОЕ УПРАВЛЕНИЕ ФОНАРИКОМ
     // =========================================================================
     let isTorchOn = false;
 
@@ -1095,15 +1093,6 @@
       return videoTrack && videoTrack.readyState === 'live' ? videoTrack : null;
     }
 
-    function isTorchSupported(track) {
-      if (!track) return false;
-      if (typeof track.getCapabilities === 'function') {
-        const caps = track.getCapabilities();
-        return Boolean(caps && caps.torch);
-      }
-      return true;
-    }
-
     async function toggleTorch() {
       const track = getActiveVideoTrack();
       if (!track) {
@@ -1114,21 +1103,21 @@
       const targetState = !isTorchOn;
 
       try {
-        // Способ 1: Стандартный W3C синтаксис
+        // Стандартный W3C синтаксис
         await track.applyConstraints({
           advanced: [{ torch: targetState }]
         });
         isTorchOn = targetState;
       } catch (err1) {
         try {
-          // Способ 2: Прямая передача флага
+          // Прямой флаг (на случай нестандартных WebView)
           await track.applyConstraints({
             torch: targetState
           });
           isTorchOn = targetState;
         } catch (err2) {
           try {
-            // Способ 3: Через ImageCapture fallback
+            // ImageCapture fallback
             if (window.ImageCapture) {
               const imageCapture = new ImageCapture(track);
               const photoCaps = await imageCapture.getPhotoCapabilities();
@@ -1174,10 +1163,8 @@
     function cleanGS1Crypto(raw) {
       if (!raw || typeof raw !== 'string') return "";
       
-      // 1. Убираем ведущие непечатные символы (\x1D) в самом начале кода
       let text = raw.replace(/^[\x00-\x1F\x7F]+/, "").trim();
 
-      // 2. Если внутри присутствует разделитель GS (\x1D) перед криптохвостом
       if (/[\x00-\x1F\x7F]/.test(text)) {
         const parts = text.split(/[\x00-\x1F\x7F]+/).filter(Boolean);
         if (parts.length > 0) {
@@ -1188,7 +1175,6 @@
         }
       }
 
-      // 3. Если разделитель склеен или отсутствует (сплошная строка)
       if (text.startsWith("01") && text.length > 18) {
         const gtinPrefix = text.substring(0, 16);
         const ai21 = text.substring(16, 18);
@@ -1196,25 +1182,21 @@
         if (ai21 === "21") {
           let body = text.substring(18);
 
-          // 3.1 Отсекаем стандартный короткий криптохвост: 93 + 4 знака
           const match93 = body.match(/93[\x21-\x7E]{4}$/);
           if (match93 && match93.index >= 5) {
             return gtinPrefix + "21" + body.substring(0, match93.index);
           }
 
-          // 3.2 Отсекаем 91/92 + 4 знака с конца строки
           const matchShort = body.match(/9[12][\x21-\x7E]{4}$/);
           if (matchShort && matchShort.index >= 5) {
             return gtinPrefix + "21" + body.substring(0, matchShort.index);
           }
 
-          // 3.3 Отсекаем длинный криптохвост 44 знака
           const matchLong = body.match(/92[\x21-\x7E]{44}$/);
           if (matchLong && matchLong.index >= 5) {
             return gtinPrefix + "21" + body.substring(0, matchLong.index);
           }
 
-          // 3.4 Проверка стандартных фиксированных длин серийников РФ
           if (body.length > 13 && /^(91|92|93)/.test(body.substring(13))) {
             return gtinPrefix + "21" + body.substring(0, 13);
           }
@@ -1335,6 +1317,9 @@
       }
     }
 
+    // =========================================================================
+    // БЕЗОПАСНЫЙ ЗАХВАТ КАМЕРЫ С АКТИВАЦИЕЙ ФОНАРИКА
+    // =========================================================================
     async function startScan() {
       try {
         scanning = true;
@@ -1343,56 +1328,61 @@
         resultBox.className = '';
         resultBox.innerHTML = 'Подключение камеры...';
 
-        let selectedDeviceId = undefined;
-        try {
-          const devices = await codeReader.getVideoInputDevices();
-          if (devices && devices.length > 0) {
-            const backCam = devices.find(d => /back|rear|environment|задн/i.test(d.label));
-            selectedDeviceId = backCam ? backCam.deviceId : devices[devices.length - 1].deviceId;
-          }
-        } catch (e) {}
+        // 1. Прямой захват камеры с поддержкой torch и непрерывного фокуса
+        const videoConstraints = {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        };
 
-        await codeReader.decodeFromVideoDevice(selectedDeviceId, videoElem, (result, err) => {
-          if (!videoElem.classList.contains('active') && videoElem.videoWidth > 0) {
-            videoElem.classList.add('active');
-            placeholder.style.display = 'none';
-            torchBtn.style.display = 'flex';
-            zoomControls.style.display = 'flex';
-            resultBox.innerHTML = 'Наведите камеру на код';
+        currentStream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraints,
+          audio: false
+        });
 
-            if (videoElem.srcObject) {
-              const tracks = videoElem.srcObject.getVideoTracks();
-              if (tracks.length > 0) {
-                videoTrack = tracks[0];
-                
-                try {
-                  videoTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-                } catch(e) {}
+        videoElem.srcObject = currentStream;
+        await videoElem.play();
 
-                if (videoTrack.getCapabilities) {
-                  const caps = videoTrack.getCapabilities();
-                  if (caps.zoom) {
-                    hasHardwareZoom = true;
-                    minZoom = caps.zoom.min || 1.0;
-                    maxZoom = caps.zoom.max || 4.0;
-                    zoomStep = (caps.zoom.step || 0.1) * 3;
-                    if (zoomStep < 0.2) zoomStep = 0.5;
-                  } else {
-                    hasHardwareZoom = false;
-                    minZoom = 1.0;
-                    maxZoom = 3.5;
-                    zoomStep = 0.5;
-                  }
-                }
-              }
-            }
+        videoTrack = currentStream.getVideoTracks()[0];
 
-            if (nativeDetector && !hardwareLoopActive) {
-              hardwareLoopActive = true;
-              runHardwareDetectionLoop();
+        // 2. Инициализация аппаратных фич (фокус, зум, проверка фонарика)
+        if (videoTrack) {
+          try {
+            await videoTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+          } catch (e) {}
+
+          if (videoTrack.getCapabilities) {
+            const caps = videoTrack.getCapabilities();
+            if (caps.zoom) {
+              hasHardwareZoom = true;
+              minZoom = caps.zoom.min || 1.0;
+              maxZoom = caps.zoom.max || 4.0;
+              zoomStep = (caps.zoom.step || 0.1) * 3;
+              if (zoomStep < 0.2) zoomStep = 0.5;
+            } else {
+              hasHardwareZoom = false;
+              minZoom = 1.0;
+              maxZoom = 3.5;
+              zoomStep = 0.5;
             }
           }
+        }
 
+        // Показываем элементы управления
+        videoElem.classList.add('active');
+        placeholder.style.display = 'none';
+        torchBtn.style.display = 'flex';
+        zoomControls.style.display = 'flex';
+        resultBox.innerHTML = 'Наведите камеру на код';
+
+        // 3. Запуск распознавания
+        if (nativeDetector) {
+          hardwareLoopActive = true;
+          runHardwareDetectionLoop();
+        }
+
+        // Фоновый сканер ZXing
+        codeReader.decodeFromVideoElement(videoElem, (result, err) => {
           if (result) {
             processFoundBarcode(result.getText(), result.getBarcodeFormat());
           }
@@ -1418,6 +1408,11 @@
       videoElem.style.transform = 'scale(1)';
       currentZoom = 1.0;
       zoomValLabel.textContent = '1.0x';
+
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+        currentStream = null;
+      }
       videoTrack = null;
 
       try {
@@ -1429,6 +1424,46 @@
       toggleBtn.textContent = 'Запустить сканер';
       toggleBtn.classList.remove('active');
     }
+
+    // =========================================================================
+    // АВТОВОССТАНОВЛЕНИЕ КАМЕРЫ ПОСЛЕ ОТПРАВКИ И СВОРАЧИВАНИЯ (ВИДИМОСТЬ ЭКРАНА)
+    // =========================================================================
+    async function recoverCameraIfNeeded() {
+      if (!scanning || isRestartingCamera) return;
+
+      const track = getActiveVideoTrack();
+      const isTrackDead = !track || track.readyState !== 'live' || track.muted;
+
+      if (isTrackDead) {
+        isRestartingCamera = true;
+        try {
+          if (currentStream) {
+            currentStream.getTracks().forEach(t => t.stop());
+            currentStream = null;
+          }
+          try { codeReader.reset(); } catch(e){}
+          hardwareLoopActive = false;
+
+          // Мягкий перезапуск камеры
+          await startScan();
+        } catch (e) {
+          console.warn('Автовосстановление камеры не удалось:', e);
+        } finally {
+          isRestartingCamera = false;
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        checkVersionUpdate();
+        setTimeout(recoverCameraIfNeeded, 300);
+      }
+    });
+
+    window.addEventListener('focus', () => {
+      setTimeout(recoverCameraIfNeeded, 300);
+    });
 
     toggleBtn.addEventListener('click', () => {
       if (scanning) stopScan();
