@@ -1103,19 +1103,22 @@
     }
 
     // =========================================================================
-    // ТОЧНАЯ И НАДЕЖНАЯ ЛОГИКА ОБРЕЗКИ КРИПТОХВОСТА ДЛЯ "ЧЕСТНОГО ЗНАКА"
+    // ТОЧНАЯ И НАДЁЖНАЯ ЛОГИКА ОБРЕЗКИ КРИПТОХВОСТА ЧЕСТНОГО ЗНАКА
     // =========================================================================
     function isGS1Code(raw) {
       if (!raw || typeof raw !== 'string') return false;
-      const clean = raw.trim();
+      // Убираем ведущие спецсимволы FNC1 / GS (\x1D), если они стоят в самом начале
+      const clean = raw.replace(/^[\x00-\x1F\x7F]+/, "").trim();
       return /^01\d{14}21.+/.test(clean);
     }
 
     function cleanGS1Crypto(raw) {
       if (!raw || typeof raw !== 'string') return "";
-      let text = raw.trim();
+      
+      // 1. Убираем ведущие непечатные символы (\x1D) в самом начале кода
+      let text = raw.replace(/^[\x00-\x1F\x7F]+/, "").trim();
 
-      // Шаг 1: Разделители FNC1 / GS (\x1D или ASCII 0-31)
+      // 2. Если внутри присутствует разделитель GS (\x1D) перед криптохвостом
       if (/[\x00-\x1F\x7F]/.test(text)) {
         const parts = text.split(/[\x00-\x1F\x7F]+/).filter(Boolean);
         if (parts.length > 0) {
@@ -1126,56 +1129,41 @@
         }
       }
 
-      // Шаг 2: Обработка сплошной строки формата 01 + 14 цифр GTIN + 21 + Серийный номер + Хвост
+      // 3. Если разделитель склеен или отсутствует (сплошная строка)
       if (text.startsWith("01") && text.length > 18) {
-        const gtinPrefix = text.substring(0, 16);
-        const ai21 = text.substring(16, 18);
+        const gtinPrefix = text.substring(0, 16); // 01 + 14 цифр GTIN
+        const ai21 = text.substring(16, 18);       // 21
 
         if (ai21 === "21") {
-          const body = text.substring(18);
+          let body = text.substring(18);
 
-          // 2.1 Точное отсечение по суффиксам Честного Знака с конца строки:
-          // 4-значный криптохвост: 93 + 4 символа (молоко, вода, соки, пиво и др.)
-          const match93 = body.match(/93[A-Za-z0-9!%&'()*+,-./:;<=>?_[\]]{4}$/);
+          // 3.1 Отсекаем стандартный короткий криптохвост: 93 + 4 знака
+          const match93 = body.match(/93[\x21-\x7E]{4}$/);
           if (match93 && match93.index >= 5) {
             return gtinPrefix + "21" + body.substring(0, match93.index);
           }
 
-          // 4-значный криптохвост: 91 или 92 + 4 символа
-          const matchShortCrypto = body.match(/9[12][A-Za-z0-9!%&'()*+,-./:;<=>?_[\]]{4}$/);
-          if (matchShortCrypto && matchShortCrypto.index >= 5) {
-            return gtinPrefix + "21" + body.substring(0, matchShortCrypto.index);
+          // 3.2 Отсекаем 91/92 + 4 знака с конца строки
+          const matchShort = body.match(/9[12][\x21-\x7E]{4}$/);
+          if (matchShort && matchShort.index >= 5) {
+            return gtinPrefix + "21" + body.substring(0, matchShort.index);
           }
 
-          // Длинный криптохвост (44 знака подписи после 92)
-          const matchLongCrypto = body.match(/92[A-Za-z0-9!%&'()*+,-./:;<=>?_[\]]{44}$/);
-          if (matchLongCrypto && matchLongCrypto.index >= 5) {
-            return gtinPrefix + "21" + body.substring(0, matchLongCrypto.index);
+          // 3.3 Отсекаем длинный криптохвост 44 знака
+          const matchLong = body.match(/92[\x21-\x7E]{44}$/);
+          if (matchLong && matchLong.index >= 5) {
+            return gtinPrefix + "21" + body.substring(0, matchLong.index);
           }
 
-          // 2.2 Стандартные фиксированные длины серийных номеров РФ
-          // Если длина хвоста совпадает с 13-значным серийником (например, 5eC91wl!sqRRN)
-          if (body.length > 13) {
-            const ai = body.substring(13, 15);
-            if (ai === "91" || ai === "92" || ai === "93") {
-              return gtinPrefix + "21" + body.substring(0, 13);
-            }
+          // 3.4 Проверка стандартных фиксированных длин серийников РФ
+          if (body.length > 13 && /^(91|92|93)/.test(body.substring(13))) {
+            return gtinPrefix + "21" + body.substring(0, 13);
           }
-
-          // 6-значный серийный номер (молочная продукция с коротким кодом, упакованная вода)
-          if (body.length > 6) {
-            const ai = body.substring(6, 8);
-            if (ai === "91" || ai === "92" || ai === "93") {
-              return gtinPrefix + "21" + body.substring(0, 6);
-            }
+          if (body.length > 6 && /^(91|92|93)/.test(body.substring(6))) {
+            return gtinPrefix + "21" + body.substring(0, 6);
           }
-
-          // 7-значный серийный номер (обувь, одежда, шины)
-          if (body.length > 7) {
-            const ai = body.substring(7, 9);
-            if (ai === "91" || ai === "92" || ai === "93") {
-              return gtinPrefix + "21" + body.substring(0, 7);
-            }
+          if (body.length > 7 && /^(91|92|93)/.test(body.substring(7))) {
+            return gtinPrefix + "21" + body.substring(0, 7);
           }
 
           return (gtinPrefix + "21" + body).replace(/[\x00-\x1F\x7F]/g, "").trim();
