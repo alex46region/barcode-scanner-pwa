@@ -449,6 +449,7 @@
     .btn-group {
       display: flex;
       gap: 8px;
+      align-items: stretch;
     }
 
     button {
@@ -487,15 +488,35 @@
       display: none; 
     }
 
+    /* Кнопка Поделиться */
+    #share-btn {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      box-shadow: 0 4px 10px rgba(2, 132, 199, 0.3);
+      display: none;
+      max-width: 52px;
+      padding: 0;
+    }
+
+    #share-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: #fff;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
     #clear-btn { 
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid var(--card-border);
       color: #e5e7eb;
       display: none; 
-      max-width: 75px; 
+      max-width: 70px; 
     }
 
-    #settings-modal-backdrop, #format-modal-backdrop, #confirm-modal-backdrop {
+    /* Модальные окна */
+    #settings-modal-backdrop, #format-modal-backdrop, #confirm-modal-backdrop, #share-modal-backdrop {
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.7);
@@ -508,7 +529,7 @@
       padding: 16px;
     }
 
-    .settings-modal, .format-modal, .confirm-modal {
+    .settings-modal, .format-modal, .confirm-modal, .share-modal {
       background: #161b22;
       border: 1px solid var(--card-border);
       border-radius: 18px;
@@ -640,6 +661,41 @@
     </div>
   </div>
 
+  <!-- Модальное окно "Поделиться" -->
+  <div id="share-modal-backdrop">
+    <div class="share-modal">
+      <div class="settings-title">
+        <span>📲 Поделиться кодами</span>
+        <span class="settings-close" id="share-close-btn">&times;</span>
+      </div>
+
+      <div class="format-btn-card" id="btn-share-text">
+        <div class="format-icon">📝</div>
+        <div>
+          <div class="format-title">Текстом (в столбик)</div>
+          <div class="format-desc">Вставится в почту, мессенджер или заметки списком</div>
+        </div>
+      </div>
+
+      <div class="format-btn-card" id="btn-share-file-txt">
+        <div class="format-icon">📄</div>
+        <div>
+          <div class="format-title">Файлом .TXT</div>
+          <div class="format-desc">Отправить прикрепленный текстовый документ</div>
+        </div>
+      </div>
+
+      <div class="format-btn-card" id="btn-share-file-xlsx">
+        <div class="format-icon">📊</div>
+        <div>
+          <div class="format-title">Файлом Excel (.XLSX)</div>
+          <div class="format-desc">Отправить таблицу с колонками «№ п/п» и «Код»</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно подтверждения очистки -->
   <div id="confirm-modal-backdrop">
     <div class="confirm-modal">
       <div style="font-size: 1.2rem; text-align: center;">🗑️</div>
@@ -653,6 +709,7 @@
     </div>
   </div>
 
+  <!-- Модальное окно выбора формата скачивания -->
   <div id="format-modal-backdrop">
     <div class="format-modal">
       <div class="settings-title">
@@ -678,6 +735,7 @@
     </div>
   </div>
 
+  <!-- Модальное окно настроек -->
   <div id="settings-modal-backdrop">
     <div class="settings-modal">
       <div class="settings-title">
@@ -738,7 +796,7 @@
       <div class="corner-br"></div>
     </div>
 
-    <!-- Аккуратные плавающие кнопки управления зумом -->
+    <!-- Кнопки зума -->
     <div class="zoom-controls" id="zoom-controls">
       <button class="zoom-btn" id="zoom-in-btn" title="Приблизить">+</button>
       <span class="zoom-label" id="zoom-val-label">1.0x</span>
@@ -763,6 +821,18 @@
     <div class="btn-group">
       <button id="clear-btn">Сброс</button>
       <button id="toggle-btn">Запустить сканер</button>
+      
+      <!-- Кнопка "Поделиться" -->
+      <button id="share-btn" title="Поделиться">
+        <svg viewBox="0 0 24 24">
+          <circle cx="18" cy="5" r="3"/>
+          <circle cx="6" cy="12" r="3"/>
+          <circle cx="18" cy="19" r="3"/>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+        </svg>
+      </button>
+
       <button id="download-btn">Выгрузить файл</button>
     </div>
   </div>
@@ -913,6 +983,7 @@
     optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
 
+    // Экспорт модалка
     const formatBackdrop = document.getElementById('format-modal-backdrop');
     const formatCloseBtn = document.getElementById('format-close-btn');
     const btnExportTxt = document.getElementById('btn-export-txt');
@@ -923,6 +994,19 @@
       if (e.target === formatBackdrop) formatBackdrop.style.display = 'none';
     });
 
+    // Share модалка
+    const shareModalBackdrop = document.getElementById('share-modal-backdrop');
+    const shareCloseBtn = document.getElementById('share-close-btn');
+    const btnShareText = document.getElementById('btn-share-text');
+    const btnShareFileTxt = document.getElementById('btn-share-file-txt');
+    const btnShareFileXlsx = document.getElementById('btn-share-file-xlsx');
+
+    shareCloseBtn.addEventListener('click', () => shareModalBackdrop.style.display = 'none');
+    shareModalBackdrop.addEventListener('click', (e) => {
+      if (e.target === shareModalBackdrop) shareModalBackdrop.style.display = 'none';
+    });
+
+    // Confirm модалка
     const confirmBackdrop = document.getElementById('confirm-modal-backdrop');
     const confirmModalText = document.getElementById('confirm-modal-text');
     const confirmCancelBtn = document.getElementById('confirm-cancel-btn');
@@ -962,11 +1046,11 @@
     const resultBox = document.getElementById('result-box');
     const toggleBtn = document.getElementById('toggle-btn');
     const downloadBtn = document.getElementById('download-btn');
+    const shareBtn = document.getElementById('share-btn');
     const clearBtn = document.getElementById('clear-btn');
     const batchModeCheck = document.getElementById('batch-mode');
     const counterVal = document.getElementById('counter-val');
 
-    // Элементы зума
     const zoomControls = document.getElementById('zoom-controls');
     const zoomInBtn = document.getElementById('zoom-in-btn');
     const zoomOutBtn = document.getElementById('zoom-out-btn');
@@ -980,7 +1064,6 @@
     let isTorchOn = false;
     let hardwareLoopActive = false;
 
-    // Параметры зума
     let currentZoom = 1.0;
     let minZoom = 1.0;
     let maxZoom = 4.0;
@@ -991,16 +1074,13 @@
       currentZoom = Math.min(maxZoom, Math.max(minZoom, val));
       zoomValLabel.textContent = `${currentZoom.toFixed(1)}x`;
 
-      // 1. Аппаратный зум камеры (нативно через драйвер сенсора)
       if (hasHardwareZoom && videoTrack) {
         try {
           await videoTrack.applyConstraints({ advanced: [{ zoom: currentZoom }] });
         } catch (e) {
-          // Если аппаратный зум дал сбой, переходим на плавный CSS зум
           videoElem.style.transform = `scale(${currentZoom})`;
         }
       } else {
-        // 2. Программный зум (масштабирование видео)
         videoElem.style.transform = `scale(${currentZoom})`;
       }
 
@@ -1080,10 +1160,13 @@
     function updateUI() {
       counterVal.textContent = scannedCodes.length;
       if (batchModeCheck.checked) {
-        downloadBtn.style.display = scannedCodes.length > 0 ? 'flex' : 'none';
-        clearBtn.style.display = scannedCodes.length > 0 ? 'flex' : 'none';
+        const hasCodes = scannedCodes.length > 0;
+        downloadBtn.style.display = hasCodes ? 'flex' : 'none';
+        shareBtn.style.display = hasCodes ? 'flex' : 'none';
+        clearBtn.style.display = hasCodes ? 'flex' : 'none';
       } else {
         downloadBtn.style.display = 'none';
+        shareBtn.style.display = 'none';
         clearBtn.style.display = 'none';
       }
     }
@@ -1211,7 +1294,6 @@
                   videoTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
                 } catch(e) {}
 
-                // Определяем аппаратные возможности зума сенсора
                 if (videoTrack.getCapabilities) {
                   const caps = videoTrack.getCapabilities();
                   if (caps.zoom) {
@@ -1283,6 +1365,11 @@
       formatBackdrop.style.display = 'flex';
     });
 
+    shareBtn.addEventListener('click', () => {
+      if (scannedCodes.length === 0) return;
+      shareModalBackdrop.style.display = 'flex';
+    });
+
     function getTimestamp() {
       const now = new Date();
       const dateStr = now.toISOString().slice(0, 10);
@@ -1290,6 +1377,7 @@
       return `${dateStr}_${timeStr}`;
     }
 
+    // Скачивание файлов
     btnExportTxt.addEventListener('click', () => {
       formatBackdrop.style.display = 'none';
       const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
@@ -1307,47 +1395,156 @@
       if (navigator.vibrate) navigator.vibrate(80);
     });
 
-    btnExportExcel.addEventListener('click', () => {
-      formatBackdrop.style.display = 'none';
-
+    function generateXlsxBlob() {
       const tableData = [
         ['№ п/п', 'Код маркировки']
       ];
-
       scannedCodes.forEach((code, index) => {
         tableData.push([index + 1, String(code)]);
       });
 
       const ws = XLSX.utils.aoa_to_sheet(tableData);
-
       for (let r = 1; r < tableData.length; r++) {
         const cellRef = XLSX.utils.encode_cell({ r: r, c: 1 });
-        if (ws[cellRef]) {
-          ws[cellRef].t = 's';
-        }
+        if (ws[cellRef]) ws[cellRef].t = 's';
       }
-
-      ws['!cols'] = [
-        { wch: 10 },
-        { wch: 45 }
-      ];
+      ws['!cols'] = [{ wch: 10 }, { wch: 45 }];
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Маркировка');
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    }
 
-      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    btnExportExcel.addEventListener('click', () => {
+      formatBackdrop.style.display = 'none';
+      const blob = generateXlsxBlob();
       const filename = `codes_${getTimestamp()}.xlsx`;
 
-      const uri = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + wbout;
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
-      link.setAttribute('href', uri);
+      link.setAttribute('href', url);
       link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
       if (navigator.vibrate) navigator.vibrate(80);
     });
+
+    // ----------------------------------------------------
+    // Логика "Поделиться"
+    // ----------------------------------------------------
+
+    // 1. Поделиться текстом в столбик
+    btnShareText.addEventListener('click', async () => {
+      shareModalBackdrop.style.display = 'none';
+      if (scannedCodes.length === 0) return;
+
+      // Формируем чистый столбик с нумерацией в порядке сканирования
+      const lines = scannedCodes.map((code, index) => `${index + 1}. ${code}`);
+      const textToShare = lines.join('\n');
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Отсканированные коды маркировки',
+            text: textToShare
+          });
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            copyTextFallback(textToShare);
+          }
+        }
+      } else {
+        copyTextFallback(textToShare);
+      }
+      if (navigator.vibrate) navigator.vibrate(60);
+    });
+
+    // 2. Поделиться файлом .TXT
+    btnShareFileTxt.addEventListener('click', async () => {
+      shareModalBackdrop.style.display = 'none';
+      if (scannedCodes.length === 0) return;
+
+      const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
+      const fileContent = linesWithNumbers.join('\r\n');
+      const filename = `codes_${getTimestamp()}.txt`;
+      const file = new File([fileContent], filename, { type: 'text/plain;charset=utf-8' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'Коды маркировки (.TXT)',
+            text: `Всего кодов: ${scannedCodes.length}`
+          });
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            downloadTxtFallback(fileContent, filename);
+          }
+        }
+      } else {
+        downloadTxtFallback(fileContent, filename);
+      }
+      if (navigator.vibrate) navigator.vibrate(60);
+    });
+
+    // 3. Поделиться файлом .XLSX
+    btnShareFileXlsx.addEventListener('click', async () => {
+      shareModalBackdrop.style.display = 'none';
+      if (scannedCodes.length === 0) return;
+
+      const blob = generateXlsxBlob();
+      const filename = `codes_${getTimestamp()}.xlsx`;
+      const file = new File([blob], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'Коды маркировки (.XLSX)',
+            text: `Всего кодов: ${scannedCodes.length}`
+          });
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            downloadXlsxFallback(blob, filename);
+          }
+        }
+      } else {
+        downloadXlsxFallback(blob, filename);
+      }
+      if (navigator.vibrate) navigator.vibrate(60);
+    });
+
+    function copyTextFallback(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      }
+      alert('Коды скопированы в буфер обмена! Вы можете вставить их в письмо или мессенджер.');
+    }
+
+    function downloadTxtFallback(content, filename) {
+      const encodedUri = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function downloadXlsxFallback(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
 
     updateUI();
   </script>
