@@ -274,7 +274,6 @@
     .corner-bl { bottom: 0; left: 0; border-width: 0 0 3.5px 3.5px; border-bottom-left-radius: 16px; }
     .corner-br { bottom: 0; right: 0; border-width: 0 3.5px 3.5px 0; border-bottom-right-radius: 16px; }
 
-    /* Панель зума */
     .zoom-controls {
       position: absolute;
       right: 14px;
@@ -488,7 +487,6 @@
       display: none; 
     }
 
-    /* Кнопка Поделиться */
     #share-btn {
       background: linear-gradient(135deg, #0284c7, #0369a1);
       box-shadow: 0 4px 10px rgba(2, 132, 199, 0.3);
@@ -515,7 +513,6 @@
       max-width: 70px; 
     }
 
-    /* Модальные окна */
     #settings-modal-backdrop, #format-modal-backdrop, #confirm-modal-backdrop, #share-modal-backdrop {
       position: fixed;
       inset: 0;
@@ -661,7 +658,6 @@
     </div>
   </div>
 
-  <!-- Модальное окно "Поделиться" -->
   <div id="share-modal-backdrop">
     <div class="share-modal">
       <div class="settings-title">
@@ -695,7 +691,6 @@
     </div>
   </div>
 
-  <!-- Модальное окно подтверждения очистки -->
   <div id="confirm-modal-backdrop">
     <div class="confirm-modal">
       <div style="font-size: 1.2rem; text-align: center;">🗑️</div>
@@ -709,7 +704,6 @@
     </div>
   </div>
 
-  <!-- Модальное окно выбора формата скачивания -->
   <div id="format-modal-backdrop">
     <div class="format-modal">
       <div class="settings-title">
@@ -735,7 +729,6 @@
     </div>
   </div>
 
-  <!-- Модальное окно настроек -->
   <div id="settings-modal-backdrop">
     <div class="settings-modal">
       <div class="settings-title">
@@ -796,7 +789,6 @@
       <div class="corner-br"></div>
     </div>
 
-    <!-- Кнопки зума -->
     <div class="zoom-controls" id="zoom-controls">
       <button class="zoom-btn" id="zoom-in-btn" title="Приблизить">+</button>
       <span class="zoom-label" id="zoom-val-label">1.0x</span>
@@ -822,7 +814,6 @@
       <button id="clear-btn">Сброс</button>
       <button id="toggle-btn">Запустить сканер</button>
       
-      <!-- Кнопка "Поделиться" -->
       <button id="share-btn" title="Поделиться">
         <svg viewBox="0 0 24 24">
           <circle cx="18" cy="5" r="3"/>
@@ -983,7 +974,6 @@
     optGs1Box.addEventListener('click', () => { setScanMode('gs1'); settingsBackdrop.style.display = 'none'; });
     optAllBox.addEventListener('click', () => { setScanMode('all'); settingsBackdrop.style.display = 'none'; });
 
-    // Экспорт модалка
     const formatBackdrop = document.getElementById('format-modal-backdrop');
     const formatCloseBtn = document.getElementById('format-close-btn');
     const btnExportTxt = document.getElementById('btn-export-txt');
@@ -994,7 +984,6 @@
       if (e.target === formatBackdrop) formatBackdrop.style.display = 'none';
     });
 
-    // Share модалка
     const shareModalBackdrop = document.getElementById('share-modal-backdrop');
     const shareCloseBtn = document.getElementById('share-close-btn');
     const btnShareText = document.getElementById('btn-share-text');
@@ -1006,7 +995,6 @@
       if (e.target === shareModalBackdrop) shareModalBackdrop.style.display = 'none';
     });
 
-    // Confirm модалка
     const confirmBackdrop = document.getElementById('confirm-modal-backdrop');
     const confirmModalText = document.getElementById('confirm-modal-text');
     const confirmCancelBtn = document.getElementById('confirm-cancel-btn');
@@ -1114,46 +1102,73 @@
       return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
+    // =========================================================================
+    // ТОЧНАЯ И БЕЗОПАСНАЯ ЛОГИКА GS1 DATAMATRIX («ЧЕСТНЫЙ ЗНАК»)
+    // =========================================================================
     function isGS1Code(raw) {
       if (!raw || typeof raw !== 'string') return false;
-      let clean = raw.replace(/[\x00-\x1F\x7F]/g, "").trim();
-      return /^01\d{14}21.+$/.test(clean);
+      const clean = raw.trim();
+      return /^01\d{14}21.+/.test(clean);
     }
 
     function cleanGS1Crypto(raw) {
-      if (!raw) return "";
-      let text = raw;
-      for (let i = 0; i < 32; i++) {
-        const char = String.fromCharCode(i);
-        if (text.includes(char)) {
-          text = text.split(char).filter(Boolean).filter(part => 
-            !part.startsWith("91") && !part.startsWith("92") && !part.startsWith("93") && !part.startsWith("8005")
-          ).join("");
+      if (!raw || typeof raw !== 'string') return "";
+      let text = raw.trim();
+
+      // 1. Обработка стандартных разделителей FNC1 / GS (\x1D или ASCII 0-31)
+      const hasControlChars = /[\x00-\x1F\x7F]/.test(text);
+      if (hasControlChars) {
+        const parts = text.split(/[\x00-\x1F\x7F]+/).filter(Boolean);
+        if (parts.length > 0) {
+          let mainPart = parts[0];
+          if (mainPart.startsWith("01") && mainPart.length >= 18) {
+            return mainPart;
+          }
         }
       }
 
+      // 2. Обработка сплошной строки без разделителей
       if (text.startsWith("01") && text.length > 18) {
         const gtinPrefix = text.substring(0, 16);
         const ai21 = text.substring(16, 18);
 
         if (ai21 === "21") {
-          let serialAndTail = text.substring(18);
-          if (serialAndTail.length > 6) {
-            const checkPos = serialAndTail.length - 6;
-            if (serialAndTail.substring(checkPos, checkPos + 2) === "93") {
-              return gtinPrefix + "21" + serialAndTail.substring(0, checkPos);
+          const remainder = text.substring(18);
+
+          // Серийный номер длиной 13 символов (молоко, вода, напитки и др.)
+          if (remainder.length > 13) {
+            const potentialTailAI = remainder.substring(13, 15);
+            if (potentialTailAI === "91" || potentialTailAI === "92" || potentialTailAI === "93") {
+              return gtinPrefix + "21" + remainder.substring(0, 13);
             }
           }
-          const idx91 = serialAndTail.lastIndexOf("91");
-          if (idx91 > 0 && (serialAndTail.length - idx91) >= 4) {
-            return gtinPrefix + "21" + serialAndTail.substring(0, idx91);
+
+          // Серийный номер длиной 6 символов
+          if (remainder.length > 6) {
+            const potentialTailAI = remainder.substring(6, 8);
+            if (potentialTailAI === "91" || potentialTailAI === "92" || potentialTailAI === "93") {
+              return gtinPrefix + "21" + remainder.substring(0, 6);
+            }
           }
-          const idx92 = serialAndTail.lastIndexOf("92");
-          if (idx92 > 0 && (serialAndTail.length - idx92) >= 4) {
-            return gtinPrefix + "21" + serialAndTail.substring(0, idx92);
+
+          // Серийный номер длиной 7 символов
+          if (remainder.length > 7) {
+            const potentialTailAI = remainder.substring(7, 9);
+            if (potentialTailAI === "91" || potentialTailAI === "92" || potentialTailAI === "93") {
+              return gtinPrefix + "21" + remainder.substring(0, 7);
+            }
           }
+
+          // Поиск криптохвоста строго с правого края (длина серийника не менее 5 знаков)
+          const matchTail = remainder.match(/(91[^\x00-\x1F]{4}|92[^\x00-\x1F]{4,88}|93[^\x00-\x1F]{4})$/);
+          if (matchTail && matchTail.index >= 5) {
+            return gtinPrefix + "21" + remainder.substring(0, matchTail.index);
+          }
+
+          return (gtinPrefix + "21" + remainder).replace(/[\x00-\x1F\x7F]/g, "").trim();
         }
       }
+
       return text.replace(/[\x00-\x1F\x7F]/g, "").trim();
     }
 
@@ -1377,7 +1392,6 @@
       return `${dateStr}_${timeStr}`;
     }
 
-    // Скачивание файлов
     btnExportTxt.addEventListener('click', () => {
       formatBackdrop.style.display = 'none';
       const linesWithNumbers = scannedCodes.map((code, index) => `${index + 1};${code}`);
@@ -1433,16 +1447,13 @@
       if (navigator.vibrate) navigator.vibrate(80);
     });
 
-    // ----------------------------------------------------
-    // Логика "Поделиться"
-    // ----------------------------------------------------
-
-    // 1. Поделиться текстом в столбик
+    // -------------------------------------------------------------------------
+    // ФУНКЦИОНАЛ «ПОДЕЛИТЬСЯ» (В СТОЛБИК / ФАЙЛАМИ)
+    // -------------------------------------------------------------------------
     btnShareText.addEventListener('click', async () => {
       shareModalBackdrop.style.display = 'none';
       if (scannedCodes.length === 0) return;
 
-      // Формируем чистый столбик с нумерацией в порядке сканирования
       const lines = scannedCodes.map((code, index) => `${index + 1}. ${code}`);
       const textToShare = lines.join('\n');
 
@@ -1453,9 +1464,7 @@
             text: textToShare
           });
         } catch (err) {
-          if (err.name !== 'AbortError') {
-            copyTextFallback(textToShare);
-          }
+          if (err.name !== 'AbortError') copyTextFallback(textToShare);
         }
       } else {
         copyTextFallback(textToShare);
@@ -1463,7 +1472,6 @@
       if (navigator.vibrate) navigator.vibrate(60);
     });
 
-    // 2. Поделиться файлом .TXT
     btnShareFileTxt.addEventListener('click', async () => {
       shareModalBackdrop.style.display = 'none';
       if (scannedCodes.length === 0) return;
@@ -1481,9 +1489,7 @@
             text: `Всего кодов: ${scannedCodes.length}`
           });
         } catch (err) {
-          if (err.name !== 'AbortError') {
-            downloadTxtFallback(fileContent, filename);
-          }
+          if (err.name !== 'AbortError') downloadTxtFallback(fileContent, filename);
         }
       } else {
         downloadTxtFallback(fileContent, filename);
@@ -1491,7 +1497,6 @@
       if (navigator.vibrate) navigator.vibrate(60);
     });
 
-    // 3. Поделиться файлом .XLSX
     btnShareFileXlsx.addEventListener('click', async () => {
       shareModalBackdrop.style.display = 'none';
       if (scannedCodes.length === 0) return;
@@ -1508,9 +1513,7 @@
             text: `Всего кодов: ${scannedCodes.length}`
           });
         } catch (err) {
-          if (err.name !== 'AbortError') {
-            downloadXlsxFallback(blob, filename);
-          }
+          if (err.name !== 'AbortError') downloadXlsxFallback(blob, filename);
         }
       } else {
         downloadXlsxFallback(blob, filename);
