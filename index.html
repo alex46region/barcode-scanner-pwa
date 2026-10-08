@@ -1048,7 +1048,7 @@
     let currentStream = null;
     let videoTrack = null;
     let hardwareLoopActive = false;
-    let isRestartingCamera = false;
+    let isTemporarilyPaused = false;
 
     let currentZoom = 1.0;
     let minZoom = 1.0;
@@ -1077,7 +1077,7 @@
     zoomOutBtn.addEventListener('click', () => applyZoom(currentZoom - zoomStep));
 
     // =========================================================================
-    // НАДЁЖНОЕ УПРАВЛЕНИЕ ФОНАРИКОМ
+    // НАДЕЖНЫЙ МОДУЛЬ УПРАВЛЕНИЯ ФОНАРИКОМ
     // =========================================================================
     let isTorchOn = false;
 
@@ -1096,40 +1096,42 @@
     async function toggleTorch() {
       const track = getActiveVideoTrack();
       if (!track) {
-        console.warn('Живой видеотрек камеры не обнаружен');
+        resultBox.className = 'invalid-alert';
+        resultBox.innerHTML = '⚠️ Видеопоток камеры не найден';
         return;
       }
 
       const targetState = !isTorchOn;
 
       try {
-        // Стандартный W3C синтаксис
+        // Стандартный вызов W3C
         await track.applyConstraints({
           advanced: [{ torch: targetState }]
         });
         isTorchOn = targetState;
       } catch (err1) {
         try {
-          // Прямой флаг (на случай нестандартных WebView)
+          // Прямой вызов
           await track.applyConstraints({
             torch: targetState
           });
           isTorchOn = targetState;
         } catch (err2) {
           try {
-            // ImageCapture fallback
+            // ImageCapture вызов
             if (window.ImageCapture) {
               const imageCapture = new ImageCapture(track);
-              const photoCaps = await imageCapture.getPhotoCapabilities();
-              if (photoCaps && (photoCaps.fillLightMode || []).includes('flash')) {
-                await track.applyConstraints({
-                  advanced: [{ torch: targetState }]
-                });
-                isTorchOn = targetState;
-              }
+              await track.applyConstraints({
+                advanced: [{ torch: targetState }]
+              });
+              isTorchOn = targetState;
+            } else {
+              throw new Error('ImageCapture недоступен');
             }
           } catch (err3) {
-            console.error('Фонарик не поддерживается на данном устройстве:', err3);
+            resultBox.className = 'invalid-alert';
+            resultBox.innerHTML = '⚠️ Фонарик не поддерживается на этом сенсоре камеры';
+            return;
           }
         }
       }
@@ -1318,8 +1320,38 @@
     }
 
     // =========================================================================
-    // БЕЗОПАСНЫЙ ЗАХВАТ КАМЕРЫ С АКТИВАЦИЕЙ ФОНАРИКА
+    // ТОЧНЫЙ ВЫБОР ОСНОВНОЙ КАМЕРЫ (ГДЕ ЕСТЬ ФОНАРИК)
     // =========================================================================
+    async function getBestBackCameraDeviceId() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+
+        if (videoDevices.length <= 1) {
+          return undefined; // Если камера всего одна, используем системную
+        }
+
+        // 1. Ищем устройство, где в названии прямо указано back/задняя, но НЕ 0.5x / wide / ultra
+        const mainBack = videoDevices.find(d => {
+          const label = d.label.toLowerCase();
+          const isBack = label.includes('back') || label.includes('задн') || label.includes('rear') || label.includes('environment');
+          const isWideOrMacro = label.includes('wide') || label.includes('ultra') || label.includes('macro') || label.includes('0.5');
+          return isBack && !isWideOrMacro;
+        });
+
+        if (mainBack) return mainBack.deviceId;
+
+        // 2. Иначе берем первую камеру с указанием задней
+        const anyBack = videoDevices.find(d => {
+          const label = d.label.toLowerCase();
+          return label.includes('back') || label.includes('задн') || label.includes('rear') || label.includes('environment');
+        });
+
+        if (anyBack) return anyBack.deviceId;
+      } catch (e) {}
+      return undefined;
+    }
+
     async function startScan() {
       try {
         scanning = true;
@@ -1328,12 +1360,18 @@
         resultBox.className = '';
         resultBox.innerHTML = 'Подключение камеры...';
 
-        // 1. Прямой захват камеры с поддержкой torch и непрерывного фокуса
+        const bestDeviceId = await getBestBackCameraDeviceId();
+
         const videoConstraints = {
-          facingMode: { ideal: 'environment' },
           width: { ideal: 1280 },
           height: { ideal: 720 }
         };
+
+        if (bestDeviceId) {
+          videoConstraints.deviceId = { exact: bestDeviceId };
+        } else {
+          videoConstraints.facingMode = { ideal: 'environment' };
+        }
 
         currentStream = await navigator.mediaDevices.getUserMedia({
           video: videoConstraints,
@@ -1345,7 +1383,7 @@
 
         videoTrack = currentStream.getVideoTracks()[0];
 
-        // 2. Инициализация аппаратных фич (фокус, зум, проверка фонарика)
+        // Проверяем аппаратные свойства сенсора
         if (videoTrack) {
           try {
             await videoTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
@@ -1368,20 +1406,17 @@
           }
         }
 
-        // Показываем элементы управления
         videoElem.classList.add('active');
         placeholder.style.display = 'none';
         torchBtn.style.display = 'flex';
         zoomControls.style.display = 'flex';
         resultBox.innerHTML = 'Наведите камеру на код';
 
-        // 3. Запуск распознавания
         if (nativeDetector) {
           hardwareLoopActive = true;
           runHardwareDetectionLoop();
         }
 
-        // Фоновый сканер ZXing
         codeReader.decodeFromVideoElement(videoElem, (result, err) => {
           if (result) {
             processFoundBarcode(result.getText(), result.getBarcodeFormat());
@@ -1426,43 +1461,37 @@
     }
 
     // =========================================================================
-    // АВТОВОССТАНОВЛЕНИЕ КАМЕРЫ ПОСЛЕ ОТПРАВКИ И СВОРАЧИВАНИЯ (ВИДИМОСТЬ ЭКРАНА)
+    // БЕСШОВНОЕ ВОССТАНОВЛЕНИЕ ПОСЛЕ ОТПРАВКИ И СВОРАЧИВАНИЯ
     // =========================================================================
-    async function recoverCameraIfNeeded() {
-      if (!scanning || isRestartingCamera) return;
-
-      const track = getActiveVideoTrack();
-      const isTrackDead = !track || track.readyState !== 'live' || track.muted;
-
-      if (isTrackDead) {
-        isRestartingCamera = true;
-        try {
-          if (currentStream) {
-            currentStream.getTracks().forEach(t => t.stop());
-            currentStream = null;
-          }
-          try { codeReader.reset(); } catch(e){}
-          hardwareLoopActive = false;
-
-          // Мягкий перезапуск камеры
-          await startScan();
-        } catch (e) {
-          console.warn('Автовосстановление камеры не удалось:', e);
-        } finally {
-          isRestartingCamera = false;
+    async function restartCameraStream() {
+      if (!scanning) return;
+      try {
+        if (currentStream) {
+          currentStream.getTracks().forEach(t => t.stop());
+          currentStream = null;
         }
+        try { codeReader.reset(); } catch(e){}
+        hardwareLoopActive = false;
+
+        await startScan();
+      } catch (e) {
+        console.warn('Сбой восстановления:', e);
       }
     }
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {
         checkVersionUpdate();
-        setTimeout(recoverCameraIfNeeded, 300);
+        if (scanning) {
+          setTimeout(restartCameraStream, 350);
+        }
       }
     });
 
     window.addEventListener('focus', () => {
-      setTimeout(recoverCameraIfNeeded, 300);
+      if (scanning) {
+        setTimeout(restartCameraStream, 350);
+      }
     });
 
     toggleBtn.addEventListener('click', () => {
@@ -1542,29 +1571,46 @@
       if (navigator.vibrate) navigator.vibrate(80);
     });
 
-    btnShareText.addEventListener('click', async () => {
+    // Безопасный вызов Share API с автоматической разморозкой камеры
+    async function safeShareExecution(shareFunction) {
+      const wasScanning = scanning;
+      try {
+        await shareFunction();
+      } catch (err) {
+        console.warn('Share error:', err);
+      } finally {
+        if (wasScanning) {
+          setTimeout(restartCameraStream, 400);
+        }
+      }
+    }
+
+    btnShareText.addEventListener('click', () => {
       shareModalBackdrop.style.display = 'none';
       if (scannedCodes.length === 0) return;
 
       const lines = scannedCodes.map((code, index) => `${index + 1}. ${code}`);
       const textToShare = lines.join('\n');
 
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: 'Отсканированные коды маркировки',
-            text: textToShare
-          });
-        } catch (err) {
-          if (err.name !== 'AbortError') copyTextFallback(textToShare);
+      safeShareExecution(async () => {
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: 'Отсканированные коды маркировки',
+              text: textToShare
+            });
+          } catch (err) {
+            if (err.name !== 'AbortError') copyTextFallback(textToShare);
+          }
+        } else {
+          copyTextFallback(textToShare);
         }
-      } else {
-        copyTextFallback(textToShare);
-      }
+      });
+
       if (navigator.vibrate) navigator.vibrate(60);
     });
 
-    btnShareFileTxt.addEventListener('click', async () => {
+    btnShareFileTxt.addEventListener('click', () => {
       shareModalBackdrop.style.display = 'none';
       if (scannedCodes.length === 0) return;
 
@@ -1573,23 +1619,26 @@
       const filename = `codes_${getTimestamp()}.txt`;
       const file = new File([fileContent], filename, { type: 'text/plain;charset=utf-8' });
 
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: 'Коды маркировки (.TXT)',
-            text: `Всего кодов: ${scannedCodes.length}`
-          });
-        } catch (err) {
-          if (err.name !== 'AbortError') downloadTxtFallback(fileContent, filename);
+      safeShareExecution(async () => {
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: 'Коды маркировки (.TXT)',
+              text: `Всего кодов: ${scannedCodes.length}`
+            });
+          } catch (err) {
+            if (err.name !== 'AbortError') downloadTxtFallback(fileContent, filename);
+          }
+        } else {
+          downloadTxtFallback(fileContent, filename);
         }
-      } else {
-        downloadTxtFallback(fileContent, filename);
-      }
+      });
+
       if (navigator.vibrate) navigator.vibrate(60);
     });
 
-    btnShareFileXlsx.addEventListener('click', async () => {
+    btnShareFileXlsx.addEventListener('click', () => {
       shareModalBackdrop.style.display = 'none';
       if (scannedCodes.length === 0) return;
 
@@ -1597,19 +1646,22 @@
       const filename = `codes_${getTimestamp()}.xlsx`;
       const file = new File([blob], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: 'Коды маркировки (.XLSX)',
-            text: `Всего кодов: ${scannedCodes.length}`
-          });
-        } catch (err) {
-          if (err.name !== 'AbortError') downloadXlsxFallback(blob, filename);
+      safeShareExecution(async () => {
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: 'Коды маркировки (.XLSX)',
+              text: `Всего кодов: ${scannedCodes.length}`
+            });
+          } catch (err) {
+            if (err.name !== 'AbortError') downloadXlsxFallback(blob, filename);
+          }
+        } else {
+          downloadXlsxFallback(blob, filename);
         }
-      } else {
-        downloadXlsxFallback(blob, filename);
-      }
+      });
+
       if (navigator.vibrate) navigator.vibrate(60);
     });
 
@@ -1617,7 +1669,7 @@
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text);
       }
-      alert('Коды скопированы в буфер обмена! Вы можете вставить их в письмо или мессенджер.');
+      alert('Коды скопированы в буфер обмена!');
     }
 
     function downloadTxtFallback(content, filename) {
