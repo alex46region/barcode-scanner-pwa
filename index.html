@@ -1049,9 +1049,9 @@
     let lastScannedCode = '';
     let lastScanTime = 0;
     let videoTrack = null;
-    let isTorchOn = false;
     let hardwareLoopActive = false;
 
+    // Параметры зума
     let currentZoom = 1.0;
     let minZoom = 1.0;
     let maxZoom = 4.0;
@@ -1078,21 +1078,81 @@
     zoomInBtn.addEventListener('click', () => applyZoom(currentZoom + zoomStep));
     zoomOutBtn.addEventListener('click', () => applyZoom(currentZoom - zoomStep));
 
-    async function toggleTorch() {
-      if (!videoTrack) return;
-      try {
-        isTorchOn = !isTorchOn;
-        await videoTrack.applyConstraints({
-          advanced: [{ torch: isTorchOn }]
-        });
-        if (isTorchOn) {
-          torchBtn.classList.add('active');
-        } else {
-          torchBtn.classList.remove('active');
+    // =========================================================================
+    // УНИВЕРСАЛЬНЫЙ МОДУЛЬ УПРАВЛЕНИЯ ФОНАРИКОМ
+    // =========================================================================
+    let isTorchOn = false;
+
+    function getActiveVideoTrack() {
+      if (videoElem && videoElem.srcObject) {
+        const stream = videoElem.srcObject;
+        if (stream.getVideoTracks) {
+          const tracks = stream.getVideoTracks();
+          const activeTrack = tracks.find(t => t.readyState === 'live');
+          if (activeTrack) return activeTrack;
         }
-        if (navigator.vibrate) navigator.vibrate(50);
-      } catch (err) {
-        console.warn('Фонарик не поддерживается:', err);
+      }
+      return videoTrack && videoTrack.readyState === 'live' ? videoTrack : null;
+    }
+
+    function isTorchSupported(track) {
+      if (!track) return false;
+      if (typeof track.getCapabilities === 'function') {
+        const caps = track.getCapabilities();
+        return Boolean(caps && caps.torch);
+      }
+      return true;
+    }
+
+    async function toggleTorch() {
+      const track = getActiveVideoTrack();
+      if (!track) {
+        console.warn('Живой видеотрек камеры не обнаружен');
+        return;
+      }
+
+      const targetState = !isTorchOn;
+
+      try {
+        // Способ 1: Стандартный W3C синтаксис
+        await track.applyConstraints({
+          advanced: [{ torch: targetState }]
+        });
+        isTorchOn = targetState;
+      } catch (err1) {
+        try {
+          // Способ 2: Прямая передача флага
+          await track.applyConstraints({
+            torch: targetState
+          });
+          isTorchOn = targetState;
+        } catch (err2) {
+          try {
+            // Способ 3: Через ImageCapture fallback
+            if (window.ImageCapture) {
+              const imageCapture = new ImageCapture(track);
+              const photoCaps = await imageCapture.getPhotoCapabilities();
+              if (photoCaps && (photoCaps.fillLightMode || []).includes('flash')) {
+                await track.applyConstraints({
+                  advanced: [{ torch: targetState }]
+                });
+                isTorchOn = targetState;
+              }
+            }
+          } catch (err3) {
+            console.error('Фонарик не поддерживается на данном устройстве:', err3);
+          }
+        }
+      }
+
+      if (isTorchOn) {
+        torchBtn.classList.add('active');
+      } else {
+        torchBtn.classList.remove('active');
+      }
+
+      if (navigator.vibrate) {
+        navigator.vibrate(isTorchOn ? [40, 30, 40] : 40);
       }
     }
 
@@ -1107,7 +1167,6 @@
     // =========================================================================
     function isGS1Code(raw) {
       if (!raw || typeof raw !== 'string') return false;
-      // Убираем ведущие спецсимволы FNC1 / GS (\x1D), если они стоят в самом начале
       const clean = raw.replace(/^[\x00-\x1F\x7F]+/, "").trim();
       return /^01\d{14}21.+/.test(clean);
     }
@@ -1131,8 +1190,8 @@
 
       // 3. Если разделитель склеен или отсутствует (сплошная строка)
       if (text.startsWith("01") && text.length > 18) {
-        const gtinPrefix = text.substring(0, 16); // 01 + 14 цифр GTIN
-        const ai21 = text.substring(16, 18);       // 21
+        const gtinPrefix = text.substring(0, 16);
+        const ai21 = text.substring(16, 18);
 
         if (ai21 === "21") {
           let body = text.substring(18);
